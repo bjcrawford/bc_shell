@@ -129,10 +129,15 @@ int check_existence(char *argv0, char **command, char **paths)
 	int i;
 	int result;
 	char *temp;
-	if(access(argv0, F_OK) != -1)
+	if(begins_with_ignore_case(argv0, "/")  ||
+	   begins_with_ignore_case(argv0, "./") ||
+	   begins_with_ignore_case(argv0, "../") )
 	{
-		*command = str_copy(argv0);
-		result = 1;
+		if(access(argv0, F_OK) != -1)
+		{
+			*command = str_copy(argv0);
+			result = 1;
+		}
 	}
 	else
 	{
@@ -140,7 +145,6 @@ int check_existence(char *argv0, char **command, char **paths)
 		{
 			temp = append("/", argv0);
 			*command = append(paths[i], temp);
-			printf("Checking: %s\n", *command);
 			if(access(*command, F_OK) != -1)
 			{
 				result = 1;
