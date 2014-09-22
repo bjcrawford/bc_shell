@@ -9,6 +9,7 @@
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 #include "bc_libstr/bc_libstr.h"
 
@@ -39,14 +40,27 @@ int shellPrompt()
 
 	while(parseInput(&i_argc, &i_argv))
 	{
+		/*
 		printf("i_argc: %d\n", i_argc);
 		dp = i_argv;
-
 		while(*dp != NULL)
 		{
 			printf("argv[%d]: %s\n", dp - i_argv, *dp);
 			dp++;
 		}
+		*/
+
+		if(access(i_argv[0], F_OK) != -1)
+		{
+			// Command exists
+			printf("Running command %s\n", i_argv[0]);
+		}
+		else
+		{
+			// Command not found
+			printf("-bc_shell: %s: command not found\n", i_argv[0]);
+		}
+		
 		for(i = 0; i_argv[i] != NULL; i++)
 			free(i_argv[i]);
 		free(i_argv);
