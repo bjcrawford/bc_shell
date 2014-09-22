@@ -28,6 +28,7 @@ extern char **environ;
 int shell_prompt();
 int parse_path(char***);
 int parse_input(int*, char***);
+int check_existence(char*, char**, char**);
 int allocation_error(char*);
 int path_parse_error();
 
@@ -41,11 +42,9 @@ int shell_prompt()
 	int i;
 	int i_argc;
 	int found;
-	char *temp;
 	char *command;
 	char **paths;
 	char **i_argv;
-	char **dp;
 
 	if(!parse_path(&paths))
 		return path_parse_error();
@@ -56,27 +55,8 @@ int shell_prompt()
 
 	while(parse_input(&i_argc, &i_argv))
 	{
-		found = 0;
-		if(access(i_argv[0], F_OK) != -1)
-		{
-			command = i_argv[0];
-			found = 1;
-		}
-		else
-		{
-			for(i = 0; paths[i] != NULL; i++)
-			{
-				temp = append("/", i_argv[0]);
-				command = append(paths[i], temp);
-				printf("Checking: %s\n", command);
-				if(access(command, F_OK) != -1)
-				{
-					found = 1;
-					break;
-				}
-			}
-			
-		}
+		found = check_existence(i_argv[0], &command, paths);
+
 		if(found)
 		{
 			printf("Found command: %s located at %s\n", i_argv[0], command);
@@ -84,15 +64,12 @@ int shell_prompt()
 		else
 			printf("-bc_shell: %s: command not found\n", i_argv[0]);
 		
-		free(temp);
 		free(command);
 		for(i = 0; i_argv[i] != NULL; i++)
 			free(i_argv[i]);
 		free(i_argv);
 	}
 
-	free(temp);
-	free(command);
 	for(i = 0; i_argv[i] != NULL; i++)
 		free(i_argv[i]);
 	free(i_argv);
@@ -145,6 +122,35 @@ int parse_input(int *i_argc, char ***i_argv)
 		return 0;
 	else
 		return 1;
+}
+
+int check_existence(char *argv0, char **command, char **paths)
+{
+	int i;
+	int result;
+	char *temp;
+	if(access(argv0, F_OK) != -1)
+	{
+		*command = str_copy(argv0);
+		result = 1;
+	}
+	else
+	{
+		for(i = 0; paths[i] != NULL; i++)
+		{
+			temp = append("/", argv0);
+			*command = append(paths[i], temp);
+			printf("Checking: %s\n", *command);
+			if(access(*command, F_OK) != -1)
+			{
+				result = 1;
+				free(temp);
+				break;
+			}
+		}
+	}
+
+	return result;
 }
 
 /* Reports an allocation error
