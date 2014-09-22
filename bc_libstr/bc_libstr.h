@@ -21,6 +21,7 @@ char  *repeat(char*, int);
 char  *replace(char*, char*, char*);
 void   rstrip(char*);
 char  *slice(char*, int, int);
+char *str_copy(char*);
 int    strcmp_ign_case(char*, char*);
 void   strip(char*);
 int    strlen_bc(char*);
