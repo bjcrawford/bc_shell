@@ -7,6 +7,9 @@
 
 char **chop(char *s, char c)
 {
+	if(s == NULL)
+		return NULL;
+	
 	char pat[2];
 	pat[0] = c;
 	pat[1] = '\0';
@@ -14,7 +17,7 @@ char **chop(char *s, char c)
 	char **slices;
 	if((slices = malloc(sizeof(char*) * l)) == NULL)
 	{
-		fprintf(stderr, "Error allocating memory\n");
+		fprintf(stderr, "Error allocating memory for chop()\n");
 		return NULL;
 	}
 	char *psb = s;
@@ -22,16 +25,16 @@ char **chop(char *s, char c)
 	int i;
 	for(i = 0; i < l - 1; i++)
 	{
-		while(*pse != c)
+		while(*pse != '\0' && *pse != c)
 			pse++;
 		int wl = pse - psb;
 		if((slices[i] = malloc(sizeof(char) * wl)) == NULL)
 		{
-			fprintf(stderr, "Error allocating memory\n");
+			fprintf(stderr, "Error allocating memory for chop()\n");
 			return NULL;
 		} 
 		char *pslice = slices[i];
-		while(*psb != c)
+		while(*psb != '\0' && *psb != c)
 			*pslice++ = *psb++;
 		*pslice = '\0';
 		psb += 1;
