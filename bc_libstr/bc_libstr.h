@@ -3,6 +3,7 @@
 #ifndef BC_LIBSTR
 #define BC_LIBSTR
 
+char *append(char*, char*);
 int    begins_with_ignore_case(char*, char*);
 char  *center(char*, int);
 char **chop(char*, char);
