@@ -19,18 +19,18 @@
 /* Error codes */
 #define EXIT_SUCCESS 0
 #define ALLOC_ERROR 1
-#define PATH_PARSE_ERROR 2
+#define PARSE_ENV_VAR_ERROR 2
 
 /* External variables */
 extern char **environ;
 
 /* Function declarations */
 int shell_prompt();
-int parse_path(char***);
+int parse_env_var(char***);
 int parse_input(int*, char***);
 int check_existence(char*, char**, char**);
 int allocation_error(char*);
-int path_parse_error();
+int parse_env_var_error();
 
 int main(int argc, char **argv)
 {
@@ -46,12 +46,8 @@ int shell_prompt()
 	char **paths;
 	char **i_argv;
 
-	if(!parse_path(&paths))
-		return path_parse_error();
-
-	printf("Paths found in $PATH:\n");
-	for(i = 0; paths[i] != NULL; i++)
-		printf("paths[%d]: %s\n", i, paths[i]);
+	if(!parse_env_var(&paths))
+		return parse_env_var_error();
 
 	while(parse_input(&i_argc, &i_argv))
 	{
@@ -80,7 +76,7 @@ int shell_prompt()
 	return EXIT_SUCCESS;
 }
 
-int parse_path(char ***paths)
+int parse_env_var(char ***paths)
 {
 	int i = 0;
 	char *path;
@@ -127,7 +123,7 @@ int parse_input(int *i_argc, char ***i_argv)
 int check_existence(char *argv0, char **command, char **paths)
 {
 	int i;
-	int result;
+	int result = 0;
 	char *temp;
 	if(begins_with_ignore_case(argv0, "/")  ||
 	   begins_with_ignore_case(argv0, "./") ||
@@ -135,9 +131,28 @@ int check_existence(char *argv0, char **command, char **paths)
 	{
 		if(access(argv0, F_OK) != -1)
 		{
-			*command = str_copy(argv0);
-			result = 1;
+			if(begins_with_ignore_case(argv0, "./") ||
+			   begins_with_ignore_case(argv0, "../") )
+			{
+				char cwd[1024];
+				if((getcwd(cwd, sizeof(cwd))) == NULL)
+				{
+					printf("Error getting cwd\n");
+					return 0;
+				}
+				temp = append("/", argv0);
+				*command = append(cwd, temp);
+				free(temp);
+				result = 1;
+			}
+			else
+			{
+				*command = str_copy(argv0);
+				result = 1;
+			}
 		}
+		else
+			*command = str_copy(argv0);
 	}
 	else
 	{
@@ -145,14 +160,18 @@ int check_existence(char *argv0, char **command, char **paths)
 		{
 			temp = append("/", argv0);
 			*command = append(paths[i], temp);
+			free(temp);
 			if(access(*command, F_OK) != -1)
 			{
 				result = 1;
-				free(temp);
 				break;
 			}
 		}
 	}
+	temp = str_copy(*command);
+	free(*command);
+	*command = replace(temp, " ", "\\ ");
+	free(temp);
 
 	return result;
 }
@@ -171,11 +190,11 @@ int allocation_error(char *name)
 
 /* Reports a path parsing error
    Output: integer, error code for allocation error */
-int path_parse_error()
+int parse_env_var_error()
 {
-	fprintf(stderr, "Error parse the path environment variable\n");
+	fprintf(stderr, "Error parsing environment variables\n");
 	fprintf(stderr, "Press enter to exit.\n");
 	getchar();
 
-	return PATH_PARSE_ERROR;
+	return PARSE_ENV_VAR_ERROR;
 }
