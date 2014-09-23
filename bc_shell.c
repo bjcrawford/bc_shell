@@ -16,6 +16,8 @@
 #define FALSE 0
 #define TRUE 1
 
+#define DEBUG 0
+
 /* Error codes */
 #define EXIT_SUCCESS 0
 #define ALLOC_ERROR 1
@@ -28,7 +30,8 @@ extern char **environ;
 int shell_prompt();
 int parse_env_var(char***);
 int parse_input(int*, char***);
-int check_existence(char*, char**, char**);
+int check_existence(char*, char**);
+int abs_rel_check(char*);
 int allocation_error(char*);
 int parse_env_var_error();
 
@@ -42,6 +45,7 @@ int shell_prompt()
 	int i;
 	int i_argc;
 	int found;
+	int pid;
 	char *command;
 	char **paths;
 	char **i_argv;
@@ -51,16 +55,25 @@ int shell_prompt()
 
 	while(parse_input(&i_argc, &i_argv))
 	{
-		found = check_existence(i_argv[0], &command, paths);
+		found = check_existence(i_argv[0], paths);
 
 		if(found)
 		{
-			printf("Found command: %s located at %s\n", i_argv[0], command);
+			command = str_copy(i_argv[0]);
+
+			pid = fork();
+			if(pid == 0)
+			{
+				execvp(command, i_argv);
+			}
+			else
+			{
+				wait(pid);
+			}
+
+			free(command);
 		}
-		else
-			printf("-bc_shell: %s: command not found\n", i_argv[0]);
 		
-		free(command);
 		for(i = 0; i_argv[i] != NULL; i++)
 			free(i_argv[i]);
 		free(i_argv);
@@ -71,7 +84,7 @@ int shell_prompt()
 	free(i_argv);
 	free(paths);
 
-	printf("Exiting...\n");
+	printf("bc_shell stopped.\n");
 
 	return EXIT_SUCCESS;
 }
@@ -97,7 +110,7 @@ int parse_env_var(char ***paths)
 int parse_input(int *i_argc, char ***i_argv)
 {
 	int i;
-	int c;        /* Input character storage */
+	int c;             /* Input character storage */
 	char buffer[201];
 	char **dp;
 
@@ -120,60 +133,59 @@ int parse_input(int *i_argc, char ***i_argv)
 		return 1;
 }
 
-int check_existence(char *argv0, char **command, char **paths)
+int check_existence(char *argv0, char **paths)
 {
 	int i;
 	int result = 0;
 	char *temp;
-	if(begins_with_ignore_case(argv0, "/")  ||
-	   begins_with_ignore_case(argv0, "./") ||
-	   begins_with_ignore_case(argv0, "../") )
+	char *path = NULL;
+
+	if(abs_rel_check(argv0))
 	{
 		if(access(argv0, F_OK) != -1)
-		{
-			if(begins_with_ignore_case(argv0, "./") ||
-			   begins_with_ignore_case(argv0, "../") )
-			{
-				char cwd[1024];
-				if((getcwd(cwd, sizeof(cwd))) == NULL)
-				{
-					printf("Error getting cwd\n");
-					return 0;
-				}
-				temp = append("/", argv0);
-				*command = append(cwd, temp);
-				free(temp);
-				result = 1;
-			}
-			else
-			{
-				*command = str_copy(argv0);
-				result = 1;
-			}
-		}
-		else
-			*command = str_copy(argv0);
+			result = 1;
 	}
 	else
 	{
 		for(i = 0; paths[i] != NULL; i++)
 		{
 			temp = append("/", argv0);
-			*command = append(paths[i], temp);
+			path = append(paths[i], temp);
 			free(temp);
-			if(access(*command, F_OK) != -1)
+			if(access(path, F_OK) != -1)
 			{
 				result = 1;
 				break;
 			}
+			free(path);
 		}
 	}
-	temp = str_copy(*command);
-	free(*command);
-	*command = replace(temp, " ", "\\ ");
-	free(temp);
+
+	if(result)
+	{
+		if(path == NULL)
+		{
+			if(DEBUG)
+				printf("Found command: %s\n", argv0);
+		}
+		else
+		{
+			if(DEBUG)
+				printf("Found command: %s located at %s\n", argv0, path);
+			free(path);
+		}
+	}
+	else
+		printf("-bc_shell: %s: command not found\n", argv0);
 
 	return result;
+}
+
+int abs_rel_check(char *s)
+{
+	return begins_with_ignore_case(s, "/")  ||
+	       begins_with_ignore_case(s, "./") ||
+	       begins_with_ignore_case(s, "../");
 }
 
 /* Reports an allocation error
