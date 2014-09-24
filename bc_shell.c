@@ -16,7 +16,7 @@
 #define FALSE 0
 #define TRUE 1
 
-#define DEBUG 0
+#define DEBUG 1
 
 /* Error codes */
 #define EXIT_SUCCESS 0
@@ -29,7 +29,7 @@ extern char **environ;
 /* Function declarations */
 int shell_prompt();
 int parse_env_var(char***);
-int parse_input(int*, char***);
+int parse_input(int*, char***, int*);
 int check_existence(char*, char**);
 int abs_rel_check(char*);
 int allocation_error(char*);
@@ -42,25 +42,35 @@ int main(int argc, char **argv)
 
 int shell_prompt()
 {
-	int i;
-	int i_argc;
-	int found;
-	int pid;
-	char *command;
-	char **paths;
-	char **i_argv;
+	int i;             /* Iteration variable */
+	int i_argc;        /* Num of args in input */
+	int pid;           /* Child process id */
+	int ce_flag = 0;   /* Concurrent execution flag */
+	char *command;     /* Command name */
+	char **paths;      /* Array of paths contained in $PATH */
+	char **i_argv;     /* Array of input, i_argv[0]: command, i_argv[1-N]: arguments */
 
 	if(!parse_env_var(&paths))
 		return parse_env_var_error();
 
-	while(parse_input(&i_argc, &i_argv))
+	while(parse_input(&i_argc, &i_argv, &ce_flag))
 	{
-		found = check_existence(i_argv[0], paths);
 
-		if(found)
+		if(DEBUG)
+		{
+			printf("i_argc: %d\n", i_argc);
+			i = 0;
+			while(i_argv[i] != NULL)
+			{
+				printf("i_argv[%d]: %s\n", i, i_argv[i]);
+				i++;
+			}
+		}
+
+		printf("ce_flag: %d\n", ce_flag);
+		if(check_existence(i_argv[0], paths))
 		{
 			command = str_copy(i_argv[0]);
-
 			pid = fork();
 			if(pid == 0)
 			{
@@ -70,10 +80,10 @@ int shell_prompt()
 			{
 				wait(pid);
 			}
-
 			free(command);
 		}
 		
+		ce_flag = 0;
 		for(i = 0; i_argv[i] != NULL; i++)
 			free(i_argv[i]);
 		free(i_argv);
@@ -107,7 +117,7 @@ int parse_env_var(char ***paths)
 		return 1;
 }
 
-int parse_input(int *i_argc, char ***i_argv)
+int parse_input(int *i_argc, char ***i_argv, int *ce_flag)
 {
 	int i;
 	int c;             /* Input character storage */
@@ -127,7 +137,24 @@ int parse_input(int *i_argc, char ***i_argv)
 
 	*i_argc = dp - *i_argv;
 
-	if(i_argc == 0 || strcmp_ign_case("exit", *i_argv[0]) == 0)
+
+	if(strcmp_ign_case((*i_argv)[*i_argc-1], "&") == 0)
+	{
+		*ce_flag = 1;
+		free((*i_argv)[*i_argc-1]);
+		(*i_argv)[*i_argc-1] = NULL;
+		*i_argc = *i_argc - 1;
+	}
+	else if(ends_with_ignore_case((*i_argv)[*i_argc-1], "&"))
+	{
+		*ce_flag = 1;
+		char *temp = replace((*i_argv)[*i_argc-1], "&", "\0");
+		free((*i_argv)[*i_argc-1]);
+		(*i_argv)[*i_argc-1] = temp;
+	}
+	
+
+	if(i_argc == 0 || strcmp_ign_case("exit", (*i_argv)[0]) == 0)
 		return 0;
 	else
 		return 1;
