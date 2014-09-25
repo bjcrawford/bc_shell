@@ -16,12 +16,16 @@
 #define FALSE 0
 #define TRUE 1
 
+/* Flags */
 #define DEBUG 1
 
 /* Error codes */
 #define EXIT_SUCCESS 0
 #define ALLOC_ERROR 1
 #define PARSE_ENV_VAR_ERROR 2
+
+/* Constants */
+#define BUFF_SIZE 300     /* Input buffer size */
 
 /* External variables */
 extern char **environ;
@@ -121,13 +125,28 @@ int parse_input(int *i_argc, char ***i_argv, int *ce_flag)
 {
 	int i;
 	int c;             /* Input character storage */
-	char buffer[201];
+	int t;             /* Temporary character storage */
+	char buffer[BUFF_SIZE + 1];
 	char **dp;
 
 	printf("bc_shell-> ");
-	for(i = 0; (c = getchar()) != EOF && c != '\n' && i < 200; i++)
+	for(i = 0; (c = getchar()) != EOF && c != '\n' && i < BUFF_SIZE; i++)
+	{
+		if(c == '<' || c == '>' || c == '|' || c == '&')
+			if(i != 0 && buffer[i-1] != ' ')
+				buffer[i++] = ' ';
+
+		if(i != 0 && c != ' ')
+		{
+			t = buffer[i-1];
+			if(t == '<' || t == '>' || t == '|' || t == '&')
+				buffer[i++] = ' ';
+		}
 		buffer[i] = c;
+	}
 	buffer[i] = '\0';
+
+	printf("Spaced: %s\n", buffer);
 
 	*i_argv = chop(buffer, ' ');
 	dp = *i_argv;
