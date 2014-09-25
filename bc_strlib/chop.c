@@ -1,8 +1,9 @@
-/* Brett Crawford
-   Prof Fiore, TA Liang
-   CIS2107 - Sec 1 */
+/* File: chop.c
+   Author: Brett Crawford
+   Date: 2014-03-25
+   Description: This file is part of the bc_strlib */
 
-#include "bc_libstr.h"
+#include "bc_strlib.h"
 #include <stdlib.h>
 
 char **chop(char *s, char c)

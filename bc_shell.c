@@ -11,7 +11,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#include "bc_libstr/bc_libstr.h"
+#include "bc_strlib/bc_strlib.h"
 
 #define FALSE 0
 #define TRUE 1
@@ -104,7 +104,7 @@ int parse_env_var(char ***paths)
 	int i = 0;
 	char *path;
 
-	while(environ[i] != NULL && !begins_with_ignore_case(environ[i], "path="))
+	while(environ[i] != NULL && !prefixcmp_igncase(environ[i], "path="))
 		i++;
 	path = replace(environ[i], "PATH=", "");
 	*paths = chop(path, ':');
@@ -138,14 +138,14 @@ int parse_input(int *i_argc, char ***i_argv, int *ce_flag)
 	*i_argc = dp - *i_argv;
 
 
-	if(strcmp_ign_case((*i_argv)[*i_argc-1], "&") == 0)
+	if(strcmp_igncase((*i_argv)[*i_argc-1], "&") == 0)
 	{
 		*ce_flag = 1;
 		free((*i_argv)[*i_argc-1]);
 		(*i_argv)[*i_argc-1] = NULL;
 		*i_argc = *i_argc - 1;
 	}
-	else if(ends_with_ignore_case((*i_argv)[*i_argc-1], "&"))
+	else if(suffixcmp_igncase((*i_argv)[*i_argc-1], "&"))
 	{
 		*ce_flag = 1;
 		char *temp = replace((*i_argv)[*i_argc-1], "&", "\0");
@@ -154,7 +154,7 @@ int parse_input(int *i_argc, char ***i_argv, int *ce_flag)
 	}
 	
 
-	if(i_argc == 0 || strcmp_ign_case("exit", (*i_argv)[0]) == 0)
+	if(i_argc == 0 || strcmp_igncase("exit", (*i_argv)[0]) == 0)
 		return 0;
 	else
 		return 1;
@@ -210,9 +210,9 @@ int check_existence(char *argv0, char **paths)
 
 int abs_rel_check(char *s)
 {
-	return begins_with_ignore_case(s, "/")  ||
-	       begins_with_ignore_case(s, "./") ||
-	       begins_with_ignore_case(s, "../");
+	return prefixcmp_igncase(s, "/")  ||
+	       prefixcmp_igncase(s, "./") ||
+	       prefixcmp_igncase(s, "../");
 }
 
 /* Reports an allocation error

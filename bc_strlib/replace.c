@@ -1,8 +1,9 @@
-/* Brett Crawford
-   Prof Fiore, TA Liang
-   CIS2107 - Sec 1 */
+/* File: replace.c
+   Author: Brett Crawford
+   Date: 2014-03-25
+   Description: This file is part of the bc_strlib */
 
-#include "bc_libstr.h"
+#include "bc_strlib.h"
 #include <stdlib.h>
 
 /* Returns a copy of the string s, but with each instance of
@@ -11,9 +12,9 @@ char *replace(char *s, char *pat, char *rep)
 {
 	if(s == NULL)
 		return NULL;
-	int ls = strlen_bc(s);
-	int lpat = strlen_bc(pat);
-	int lrep = strlen_bc(rep);
+	int ls = strlen(s);
+	int lpat = strlen(pat);
+	int lrep = strlen(rep);
 	int o = count_occurences(s, pat);
 	int lns = ls - (o*lpat) + (o*lrep) + 1;
 	char *ns;

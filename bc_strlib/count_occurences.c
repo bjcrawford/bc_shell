@@ -1,15 +1,16 @@
-/* Brett Crawford
-   Prof Fiore, TA Liang
-   CIS2107 - Sec 1 */
+/* File: count_occurrences.c
+   Author: Brett Crawford
+   Date: 2014-09-22
+   Description: This file is part of the bc_strlib */
 
-#include "bc_libstr.h"
+#include "bc_strlib.h"
 
 /* Returns the numbers of occurrences of string pat in string s */
 int count_occurences(char *s, char *pat)
 {
 	int i;
 	int c = 0;
-	int lpat = strlen_bc(pat);
+	int lpat = strlen(pat);
 	char *ps = s;
 	char *ppat = pat;
 	while(*ps != '\0')
