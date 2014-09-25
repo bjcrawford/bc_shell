@@ -33,7 +33,9 @@ extern char **environ;
 /* Function declarations */
 int shell_prompt();
 int parse_env_var(char***);
-int parse_input(int*, char***, int*);
+int read_and_space_input(char**);
+int parse_input(char*, int*, int***, char****);
+int parse_command(char*, int**, char***);
 int check_existence(char*, char**);
 int abs_rel_check(char*);
 int allocation_error(char*);
@@ -47,9 +49,13 @@ int main(int argc, char **argv)
 int shell_prompt()
 {
 	int i;             /* Iteration variable */
+	int num_commands;  /* Number of commands in input */
+	int **num_args;    /* Array of num of args for each command */
 	int i_argc;        /* Num of args in input */
 	int pid;           /* Child process id */
 	int ce_flag = 0;   /* Concurrent execution flag */
+	char *input_string;
+	char ***commands;
 	char *command;     /* Command name */
 	char **paths;      /* Array of paths contained in $PATH */
 	char **i_argv;     /* Array of input, i_argv[0]: command, i_argv[1-N]: arguments */
@@ -57,9 +63,16 @@ int shell_prompt()
 	if(!parse_env_var(&paths))
 		return parse_env_var_error();
 
-	while(parse_input(&i_argc, &i_argv, &ce_flag))
+	//while(parse_input(&i_argc, &i_argv, &ce_flag))
+	while(read_and_space_input(&input_string))
 	{
 
+		printf("input_string: %s\n", input_string);
+
+		parse_input(input_string, &num_commands, &num_args, &commands);
+
+		printf("input_string: %s\n", input_string);
+		/*
 		if(DEBUG)
 		{
 			printf("i_argc: %d\n", i_argc);
@@ -71,6 +84,7 @@ int shell_prompt()
 			}
 		}
 
+		
 		printf("ce_flag: %d\n", ce_flag);
 		if(check_existence(i_argv[0], paths))
 		{
@@ -91,12 +105,15 @@ int shell_prompt()
 		for(i = 0; i_argv[i] != NULL; i++)
 			free(i_argv[i]);
 		free(i_argv);
+		*/
 	}
 
+	/*
 	for(i = 0; i_argv[i] != NULL; i++)
 		free(i_argv[i]);
 	free(i_argv);
 	free(paths);
+	*/
 
 	printf("bc_shell stopped.\n");
 
@@ -121,7 +138,78 @@ int parse_env_var(char ***paths)
 		return 1;
 }
 
-int parse_input(int *i_argc, char ***i_argv, int *ce_flag)
+int read_and_space_input(char **input_string)
+{
+	int i;
+	int c;             /* Input character storage */
+	int t;             /* Temporary character storage */
+	char buffer[BUFF_SIZE + 1];
+
+	printf("bc_shell-> ");
+	for(i = 0; (c = getchar()) != EOF && c != '\n' && i < BUFF_SIZE; i++)
+	{
+		if(c == '<' || c == '>' || c == '|' || c == '&')
+			if(i != 0 && buffer[i-1] != ' ')
+				buffer[i++] = ' ';
+
+		if(i != 0 && c != ' ')
+		{
+			t = buffer[i-1];
+			if(t == '<' || t == '>' || t == '|' || t == '&')
+				buffer[i++] = ' ';
+		}
+		buffer[i] = c;
+	}
+	buffer[i] = '\0';
+
+	*input_string = str_copy(buffer);
+
+	if(prefixcmp_igncase("exit", buffer))
+		return 0;
+	else
+		return 1;
+}
+
+int parse_input(char *input_string, int *num_commands, int ***num_args, char ****commands)
+{
+	int i = 0, j = 0;
+	char **command_strings = chop(input_string, '|');
+
+	for(i = 0; command_strings[i] != NULL; i++);
+	*num_commands = i;
+
+	if((num_args = malloc(*num_commands * sizeof(int*))) == NULL)
+		return allocation_error("num_args");
+
+	if((commands = malloc(*num_commands * sizeof(char**))) == NULL)
+		return allocation_error("commands");
+
+	for(i = 0; i < *num_commands; i++)
+	{
+		strip(command_strings[i]);
+		if(DEBUG)
+		{
+			printf("command_string[%d]: %s\n", i, command_strings[i]);
+		}
+		parse_command(command_strings[i], &num_args[i], commands[i]);
+	}
+
+	for(i = 0; command_strings[i] != NULL; i++)
+		free(command_strings[i]);
+	free(command_strings);
+}
+
+int parse_command(char *command_string, int **num_args, char ***args)
+{
+	int i = 0;
+	args = chop(command_string, ' ');
+	for(i = 0; args[i] != NULL; i++)
+		if(DEBUG)
+			printf("  args[%d]: %s\n", i, args[i]);
+	*num_args = i;
+}
+
+int parse_input_old(int *i_argc, char ***i_argv, int *ce_flag)
 {
 	int i;
 	int c;             /* Input character storage */
@@ -146,7 +234,8 @@ int parse_input(int *i_argc, char ***i_argv, int *ce_flag)
 	}
 	buffer[i] = '\0';
 
-	printf("Spaced: %s\n", buffer);
+	if(DEBUG)
+		printf("Spaced Input: %s\n", buffer);
 
 	*i_argv = chop(buffer, ' ');
 	dp = *i_argv;
@@ -156,7 +245,6 @@ int parse_input(int *i_argc, char ***i_argv, int *ce_flag)
 
 	*i_argc = dp - *i_argv;
 
-
 	if(strcmp_igncase((*i_argv)[*i_argc-1], "&") == 0)
 	{
 		*ce_flag = 1;
@@ -164,14 +252,6 @@ int parse_input(int *i_argc, char ***i_argv, int *ce_flag)
 		(*i_argv)[*i_argc-1] = NULL;
 		*i_argc = *i_argc - 1;
 	}
-	else if(suffixcmp_igncase((*i_argv)[*i_argc-1], "&"))
-	{
-		*ce_flag = 1;
-		char *temp = replace((*i_argv)[*i_argc-1], "&", "\0");
-		free((*i_argv)[*i_argc-1]);
-		(*i_argv)[*i_argc-1] = temp;
-	}
-	
 
 	if(i_argc == 0 || strcmp_igncase("exit", (*i_argv)[0]) == 0)
 		return 0;
