@@ -10,12 +10,15 @@
 #define BC_STRLIB
 
 char  *append(char*, char*);
-int    prefixcmp_igncase(char*, char*);
 char **chop(char*, char);
 int    count_occurences(char*, char*);
-int    suffixcmp_igncase(char*, char*);
+void   lstrip(char*);
+int    prefixcmp_igncase(char*, char*);
 char  *replace(char*, char*, char*);
+void   rstrip(char*);
+int    suffixcmp_igncase(char*, char*);
 char  *str_copy(char*);
 int    strcmp_igncase(char*, char*);
+void   strip(char*);
 
 #endif
