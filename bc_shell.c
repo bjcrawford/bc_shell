@@ -51,7 +51,7 @@ int shell_prompt()
 	int i, j;            /* Iteration variables */
 	int num_commands;    /* Number of commands in input */
 	int pid;             /* Child process id */
-	int **num_args;      /* Array of num of args for each command */
+	int *num_args;      /* Array of num of args for each command */
 	int **ce_flag;       /* Concurrent execution flag */
 	int **or_flag;       /* Output redirection flag */
 	int **ir_flag;       /* Input redirection flag */
@@ -69,21 +69,58 @@ int shell_prompt()
 	{
 		if(DEBUG)
 			printf("input_string: %s\n", input_string);
-		parse_input(input_string, &num_commands, &num_args, &commands);
 
-		
-		/*
+		//parse_input(input_string, &num_commands, &num_args, &commands);
+			char **command_strings = chop(input_string, '|');
+
+			for(i = 0; command_strings[i] != NULL; i++);
+			num_commands = i;
+
+			if(DEBUG)
+				printf("num_commands: %d\n", num_commands);
+
+			if((num_args = malloc(num_commands * sizeof(int))) == NULL)
+				return allocation_error("num_args");
+
+			if((commands = malloc(num_commands * sizeof(char**))) == NULL)
+				return allocation_error("commands");
+
+			for(i = 0; i < num_commands; i++)
+			{
+				strip(command_strings[i]);
+				if(DEBUG)
+					printf("command_string[%d]: %s\n", i, command_strings[i]);
+
+				//parse_command(command_strings[i], *num_args[i], *commands[i]);
+					int j = 0;
+					commands[i] = chop(command_strings[i], ' ');
+					for(j = 0; commands[i][j] != NULL; j++);
+					num_args[i] = j;
+			}
+
+
+
+
+
+
+
+		//if(DEBUG)
+		//	printf("input_string: %s\n", input_string);
+
+		printf("Pause\n");
+
 		if(DEBUG)
 		{
 			for(i = 0; i < num_commands; i++)
 			{
+				printf("num_args[%d]: %d\n", i, num_args[i]);
 				for(j = 0; commands[i][j] != NULL; j++)
 				{
 					printf("commands[%d][%d]: %s\n", i, j, commands[i][j]);
 				}
 			}
 		}
-
+		/*
 		printf("ce_flag: %d\n", ce_flag);
 		if(check_existence(i_argv[0], paths))
 		{
@@ -171,39 +208,12 @@ int read_and_space_input(char **input_string)
 
 int parse_input(char *input_string, int *num_commands, int ***num_args, char ****commands)
 {
-	int i = 0, j = 0;
-	char **command_strings = chop(input_string, '|');
-
-	for(i = 0; command_strings[i] != NULL; i++);
-	*num_commands = i;
-
-	if((num_args = malloc(*num_commands * sizeof(int*))) == NULL)
-		return allocation_error("num_args");
-
-	if((commands = malloc(*num_commands * sizeof(char**))) == NULL)
-		return allocation_error("commands");
-
-	for(i = 0; i < *num_commands; i++)
-	{
-		strip(command_strings[i]);
-		if(DEBUG)
-			printf("command_string[%d]: %s\n", i, command_strings[i]);
-		parse_command(command_strings[i], &num_args[i], commands[i]);
-	}
-
-	//for(i = 0; command_strings[i] != NULL; i++)
-	//	free(command_strings[i]);
-	//free(command_strings);
+	
 }
 
 int parse_command(char *command_string, int **num_args, char ***args)
 {
-	int i = 0;
-	args = chop(command_string, ' ');
-	for(i = 0; args[i] != NULL; i++)
-		if(DEBUG)
-			printf("  args[%d]: %s\n", i, args[i]);
-	*num_args = i;
+	
 }
 
 int check_existence(char *argv0, char **paths)
