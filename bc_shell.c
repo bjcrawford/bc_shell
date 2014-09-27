@@ -34,8 +34,8 @@ extern char **environ;
 int shell_prompt();
 int parse_env_var(char***);
 int read_and_space_input(char**);
-int parse_input(char*, int*, int***, char****);
-int parse_command(char*, int**, char***);
+int parse_input(char*, int*, int**, char****);
+int parse_command(char*, int*, char***);
 int check_existence(char*, char**);
 int abs_rel_check(char*);
 int allocation_error(char*);
@@ -48,78 +48,136 @@ int main(int argc, char **argv)
 
 int shell_prompt()
 {
-	int i, j;            /* Iteration variables */
-	int num_commands;    /* Number of commands in input */
-	int pid;             /* Child process id */
-	int *num_args;      /* Array of num of args for each command */
-	int **ce_flag;       /* Concurrent execution flag */
-	int **or_flag;       /* Output redirection flag */
-	int **ir_flag;       /* Input redirection flag */
+	int i, j, k;           /* Iteration variables */
+	int num_commands;      /* Number of commands in input */
+	int pid;               /* Child process id */
+	int cf_flag;           /* Command found flag */
+	int acf_flag;          /* All commands found flag */
+	int *num_args;         /* Array of num of args for each command */
+	int *ce_flags;         /* Array of concurrent execution flag */
+	int *or_flags;         /* Array of output redirection flag */
+	int *ir_flags;         /* Array of input redirection flag */
 
-	char *input_string;  /* String to hold user input */
-	char **paths;        /* Array of paths contained in $PATH */
-	char ***commands;    /* Array of commands,
-	                        each command is an array of args, */
+	char *input_string;    /* String to hold user input */
+	char **out_redir;      /* Array of output redirection strings */
+	char **in_redir;       /* Array of input redirection strings */ 
+	char **paths;          /* Array of paths contained in $PATH */
+	char ***commands;      /* Array of commands,
+	                          each command is an array of args, */
 
 	if(!parse_env_var(&paths))
 		return parse_env_var_error();
 
 	//while(parse_input(&i_argc, &i_argv, &ce_flag))
 	while(read_and_space_input(&input_string))
-	{
-		if(DEBUG)
-			printf("input_string: %s\n", input_string);
-
-		//parse_input(input_string, &num_commands, &num_args, &commands);
-			char **command_strings = chop(input_string, '|');
-
-			for(i = 0; command_strings[i] != NULL; i++);
-			num_commands = i;
-
-			if(DEBUG)
-				printf("num_commands: %d\n", num_commands);
-
-			if((num_args = malloc(num_commands * sizeof(int))) == NULL)
-				return allocation_error("num_args");
-
-			if((commands = malloc(num_commands * sizeof(char**))) == NULL)
-				return allocation_error("commands");
-
-			for(i = 0; i < num_commands; i++)
-			{
-				strip(command_strings[i]);
-				if(DEBUG)
-					printf("command_string[%d]: %s\n", i, command_strings[i]);
-
-				//parse_command(command_strings[i], *num_args[i], *commands[i]);
-					int j = 0;
-					commands[i] = chop(command_strings[i], ' ');
-					for(j = 0; commands[i][j] != NULL; j++);
-					num_args[i] = j;
-			}
-
-
-
-
-
-
-
-		//if(DEBUG)
-		//	printf("input_string: %s\n", input_string);
-
-		printf("Pause\n");
+	{		
+		parse_input(input_string, &num_commands, &num_args, &commands);
 
 		if(DEBUG)
 		{
+			printf("input_string: %s\n", input_string);
+			printf("num_commands: %d\n", num_commands);
 			for(i = 0; i < num_commands; i++)
 			{
 				printf("num_args[%d]: %d\n", i, num_args[i]);
-				for(j = 0; commands[i][j] != NULL; j++)
+				for(j = 0; j < num_args[i]; j++)
 				{
 					printf("commands[%d][%d]: %s\n", i, j, commands[i][j]);
 				}
 			}
 		}
+
+		acf_flag = 1;
+		for(i = 0; i < num_commands && acf_flag; i++)
+		{
+			cf_flag = check_existence(commands[i][0], paths);
+			if(!cf_flag)
+				acf_flag = 0;
+		}
+
+		if(acf_flag)
+		{
+			if((ce_flags = calloc(num_commands, sizeof(int))) == NULL)
+				return allocation_error("ce_flags");
+			if((or_flags = calloc(num_commands, sizeof(int))) == NULL)
+				return allocation_error("or_flags");
+			if((ir_flags = calloc(num_commands, sizeof(int))) == NULL)
+				return allocation_error("ir_flags");
+
+			if((out_redir = calloc(num_commands, sizeof(char*))) == NULL)
+				return allocation_error("out_redir");
+			if((in_redir = calloc(num_commands, sizeof(char*))) == NULL)
+				return allocation_error("in_redir");
+
+			for(i = 0; i < num_commands; i++)
+			{
+				if(strcmp_igncase(commands[i][num_args[i]-1], "&") == 0)
+				{
+					ce_flags[i] = 1;
+					commands[i][num_args[i]-1] = NULL;
+					num_args[i]--;
+				}
+
+				for(j = 0; j < num_args[i]; j++)
+				{
+					if(strcmp_igncase(commands[i][j], ">") == 0)
+					{
+						if(i == num_commands - 1 && j < num_args[i] - 1)
+						{
+							or_flags[i] = 1;
+							out_redir[i] = str_copy(commands[i][j+1]);
+						}
+						for(k = j; k < num_args[i]; k++)
+							commands[i][k] = commands[i][k+1];
+						num_args[i]--;
+					}
+				}
+
+				for(j = 0; j < num_args[i]; j++)
+				{
+					if(strcmp_igncase(commands[i][j], "<") == 0)
+					{
+						if(i == 0 && j < num_args[i] - 1)
+						{
+							ir_flags[i] = 1;
+							in_redir[i] = str_copy(commands[i][j+1]);
+						}
+						for(k = j; k < num_args[i]; k++)
+							commands[i][k] = commands[i][k+1];
+						num_args[i]--;
+					}
+				}
+			}
+			
+
+			for(i = 0; i < num_commands; i++)
+			{
+				printf("ce_flags[%d]: %d\n", i, ce_flags[i]);
+				printf("or_flags[%d]: %d\n", i, or_flags[i]);
+				if(or_flags[i])
+					printf("out_redir[%d]: %s\n", i, out_redir[i]);
+				printf("ir_flags[%d]: %d\n", i, ir_flags[i]);
+				if(ir_flags[i])
+					printf("in_redir[%d]: %s\n", i, in_redir[i]);
+			}
+
+
+		}
+
+		if(DEBUG)
+		{
+			printf("input_string: %s\n", input_string);
+			printf("num_commands: %d\n", num_commands);
+			for(i = 0; i < num_commands; i++)
+			{
+				printf("num_args[%d]: %d\n", i, num_args[i]);
+				for(j = 0; j < num_args[i]; j++)
+				{
+					printf("commands[%d][%d]: %s\n", i, j, commands[i][j]);
+				}
+			}
+		}
+
 		/*
 		printf("ce_flag: %d\n", ce_flag);
 		if(check_existence(i_argv[0], paths))
@@ -206,14 +264,33 @@ int read_and_space_input(char **input_string)
 		return 1;
 }
 
-int parse_input(char *input_string, int *num_commands, int ***num_args, char ****commands)
+int parse_input(char *input_string, int *num_commands, int **num_args, char ****commands)
 {
-	
+	int i = 0;
+	char **command_strings = chop(input_string, '|');
+
+	for(i = 0; command_strings[i] != NULL; i++);
+	*num_commands = i;
+
+	if((*num_args = calloc(*num_commands, sizeof(int))) == NULL)
+		return allocation_error("num_args");
+
+	if((*commands = calloc(*num_commands, sizeof(char**))) == NULL)
+		return allocation_error("commands");
+
+	for(i = 0; i < *num_commands; i++)
+	{
+		strip(command_strings[i]);
+		parse_command(command_strings[i], &((*num_args)[i]), &((*commands)[i]));
+	}
 }
 
-int parse_command(char *command_string, int **num_args, char ***args)
+int parse_command(char *command_string, int *num_args, char ***args)
 {
-	
+	int i = 0;
+	*args = chop(command_string, ' ');
+	for(i = 0; (*args)[i] != NULL; i++);
+	*num_args = i;
 }
 
 int check_existence(char *argv0, char **paths)
