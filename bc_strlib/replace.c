@@ -18,7 +18,7 @@ char *replace(char *s, char *pat, char *rep)
 	int o = count_occurences(s, pat);
 	int lns = ls - (o*lpat) + (o*lrep) + 1;
 	char *ns;
-	if((ns = malloc(sizeof(char) * lns)) == NULL)
+	if((ns = calloc(lns, sizeof(char))) == NULL)
 	{
 		fprintf(stderr, "Error allocating memory");
 		return NULL;

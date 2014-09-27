@@ -13,7 +13,7 @@ char *append(char *s1, char *s2)
 {
 	int l = strlen(s1) + strlen(s2) + 1;
 	char *ns;
-	if((ns = malloc(l * sizeof(char))) == NULL)
+	if((ns = calloc(l, sizeof(char))) == NULL)
 	{
 		printf(stderr, "Error allocating memory for append\n");
 		return NULL;

@@ -16,7 +16,7 @@ char **chop(char *s, char c)
 	pat[1] = '\0';
 	int l = count_occurences(s, pat) + 2;
 	char **slices;
-	if((slices = malloc(sizeof(char*) * l)) == NULL)
+	if((slices = calloc(l, sizeof(char*))) == NULL)
 	{
 		fprintf(stderr, "Error allocating memory for chop()\n");
 		return NULL;
@@ -29,7 +29,7 @@ char **chop(char *s, char c)
 		while(*pse != '\0' && *pse != c)
 			pse++;
 		int wl = pse - psb;
-		if((slices[i] = malloc(sizeof(char) * wl)) == NULL)
+		if((slices[i] = calloc(wl, sizeof(char))) == NULL)
 		{
 			fprintf(stderr, "Error allocating memory for chop()\n");
 			return NULL;
