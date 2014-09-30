@@ -162,130 +162,136 @@ int shell_prompt()
 				}
 			}
 			
-
-			for(i = 0; i < num_commands; i++)
+			if(DEBUG)
 			{
-				printf("ce_flags[%d]: %d\n", i, ce_flags[i]);
-				printf("or_flags[%d]: %d\n", i, or_flags[i]);
-				if(or_flags[i])
-					printf("out_redir[%d]: %s\n", i, out_redir[i]);
-				printf("ir_flags[%d]: %d\n", i, ir_flags[i]);
-				if(ir_flags[i])
-					printf("in_redir[%d]: %s\n", i, in_redir[i]);
-			}
-
-
-		}
-
-		if(DEBUG)
-		{
-			printf("input_string: %s\n", input_string);
-			printf("num_commands: %d\n", num_commands);
-			for(i = 0; i < num_commands; i++)
-			{
-				printf("num_args[%d]: %d\n", i, num_args[i]);
-				for(j = 0; j < num_args[i]; j++)
+				for(i = 0; i < num_commands; i++)
 				{
-					printf("commands[%d][%d]: %s\n", i, j, commands[i][j]);
+					printf("ce_flags[%d]: %d\n", i, ce_flags[i]);
+					printf("or_flags[%d]: %d\n", i, or_flags[i]);
+					if(or_flags[i])
+						printf("out_redir[%d]: %s\n", i, out_redir[i]);
+					printf("ir_flags[%d]: %d\n", i, ir_flags[i]);
+					if(ir_flags[i])
+						printf("in_redir[%d]: %s\n", i, in_redir[i]);
+				}
+
+				printf("input_string: %s\n", input_string);
+				printf("num_commands: %d\n", num_commands);
+				for(i = 0; i < num_commands; i++)
+				{
+					printf("num_args[%d]: %d\n", i, num_args[i]);
+					for(j = 0; j < num_args[i]; j++)
+					{
+						printf("commands[%d][%d]: %s\n", i, j, commands[i][j]);
+					}
 				}
 			}
-		}
 
-		for(i = 0; i < num_commands; i++)
-		{
-			if(pipe(pc_fd[i]) == -1)
-				printf("Error initializing pc_fd[%d]\n", i);
-		}
-
-		child_h_pid = fork();
-		if(child_h_pid == 0)
-		{
 			for(i = 0; i < num_commands; i++)
 			{
-				child_i_pid = fork();
-				if(child_i_pid == 0)
+				if(pipe(pc_fd[i]) == -1)
+					printf("Error initializing pc_fd[%d]\n", i);
+			}
+
+			/* Create a child to handle creating the children for command(s) */
+			child_h_pid = fork(); 
+			if(child_h_pid == 0)
+			{
+				for(i = 0; i < num_commands; i++)
 				{
-					if(i > 0)
+					/* Create a child for each command */
+					child_i_pid = fork();
+					if(child_i_pid == 0)
 					{
-						printf("Child %d replacing stdin for cmd %s with pc_fd[%d][0]\n", getpid(), commands[i][0], i);
-						if(dup2(pc_fd[i][0], fileno(stdin)) == -1)
-							printf("dup2 error replacing stdin\n");
+						if(i > 0) /* If not the first of the "piped" together commands */
+						{
+							/* Replace stdin with read side of pipe */
+							if(dup2(pc_fd[i][0], fileno(stdin)) == -1)
+								printf("dup2 error replacing stdin with pc_fd\n");
+						}
+						else  /* If the first of the "piped" together commands */
+						{
+							if(ir_flags[i]) /* If input redirection flag is set */
+							{
+								/* Open input redirection and use to replace stdin */
+								ir_fd = open(in_redir[i], O_RDONLY);
+								if(dup2(ir_fd, fileno(stdin)) == -1)
+									printf("dup2 error replacing stdin with ir_fd\n");
+							}
+						}
+						if(i < num_commands - 1) /* If not the last of the "piped" together commands */
+						{
+							/* Replace stdout with the write side of pipe */
+							if(dup2(pc_fd[i+1][1], fileno(stdout)) == -1)
+								printf("dup2 error replacing stdout with pc_fd\n");
+						}
+						else /* If the last of the "piped" together commands */
+						{
+							if(or_flags[i]) /* If the output redirection flag is set */
+							{
+								/* Open output redirection and use to replace stdout */
+								or_fd = open(out_redir[i], O_WRONLY|O_CREAT,S_IRWXU|S_IRWXG|S_IRWXO);
+								if(dup2(or_fd, fileno(stdout)) == -1)
+									printf("dup2 error replacing stdout with or_fd\n");
+							}
+						}
+
+						/* Close all the child's file descriptors */
+						for(j = 0; j < num_commands; j++)
+						{
+							close(pc_fd[j][0]);
+							close(pc_fd[j][1]);
+							if(or_flags[i])
+								close(or_fd);
+							if(ir_flags[i])
+								close(ir_fd);
+						}
+						execvp(commands[i][0], commands[i]);
 					}
 					else
 					{
-						printf("Closing both pc_fd[%d][0] and pc_fd[%d][1]\n", i, i);
-						if(ir_flags[i])
-						{
-							ir_fd = open(in_redir[i], O_RDONLY);
-							dup2(0, ir_fd);
-						}
-					}
-					if(i < num_commands - 1)
-					{
-						printf("Child %d replacing stdout for cmd %s with pc_fd[%d][1]\n", getpid(), commands[i][0], i+1);
-						if(dup2(pc_fd[i+1][1], fileno(stdout)) == -1)
-							printf("dup2 error replacing stdout\n");
-					}
-					else
-					{
-						if(or_flags[i])
-						{
-							or_fd = open(out_redir[i], O_WRONLY|O_CREAT,S_IRWXU|S_IRWXG|S_IRWXO);
-						}
-					}
+						/* Close the child handler's file descriptors for this child */
+						close(pc_fd[i][0]);
+						close(pc_fd[i][1]);
 
-					for(j = 0; j < num_commands; j++)
-					{
-						close(pc_fd[j][0]);
-						close(pc_fd[j][1]);
+						if(!ce_flags[i])
+							wait(child_i_pid);
 					}
-
-					if(i == num_commands - 1)
-					{
-						printf("I am the last command: child %d with cmd %s\n", getpid(), commands[i][0]);
-					}
-					execvp(commands[i][0], commands[i]);
 				}
-				else
+				/* Child handler can exit after creating all children */
+				return EXIT_SUCCESS;
+			}
+			else
+			{
+				/* Close the parent's file descriptors */
+				for(i = 0; i < num_commands; i++)
 				{
 					close(pc_fd[i][0]);
 					close(pc_fd[i][1]);
-					printf("Waiting for child %d to finish\n", child_i_pid);
-					//if(ce_flags[i])
-						wait(child_i_pid);
-					printf("Child %d has finished\n", child_i_pid);
 				}
+				if(!ce_flags[num_commands-1])
+					wait(child_h_pid);
 			}
-			return EXIT_SUCCESS;
-		}
-		else
-		{
+			
+			/* Free all dynamically allocated memory */
 			for(i = 0; i < num_commands; i++)
 			{
-				close(pc_fd[i][0]);
-				close(pc_fd[i][1]);
+				for(j = 0; j < num_args[i]; j++)
+					free(commands[i][j]);
+				free(commands[i]);
+				free(out_redir[i]);
+				free(in_redir[i]);
+				free(pc_fd[i]);
 			}
-			wait(child_h_pid);
-			printf("Child handler %d has finished\n", child_h_pid);
+			free(commands);
+			free(num_args);
+			free(out_redir);
+			free(in_redir);
+			free(pc_fd);
+			free(ce_flags);
+			free(or_flags);
+			free(ir_flags);		
 		}
-		
-		for(i = 0; i < num_commands; i++)
-		{
-			for(j = 0; j < num_args[i]; j++)
-				free(commands[i][j]);
-			free(commands[i]);
-			free(out_redir[i]);
-			free(in_redir[i]);
-			free(pc_fd[i]);
-		}
-		free(commands);
-		free(num_args);
-		free(out_redir);
-		free(in_redir);
-		free(pc_fd);
-		free(ce_flags);
-		free(or_flags);
-		free(ir_flags);		
 	}
 	
 	free(input_string);
