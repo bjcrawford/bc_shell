@@ -140,9 +140,9 @@ int shell_prompt()
 							or_flags[i] = 1;
 							out_redir[i] = str_copy(commands[i][j+1]);
 						}
-						for(k = j; k < num_args[i]; k++)
-							commands[i][k] = commands[i][k+1];
-						num_args[i]--;
+						for(k = j; k < num_args[i] - 1; k++)
+							commands[i][k] = commands[i][k+2];
+						num_args[i] = num_args[i] - 2;
 					}
 				}
 
@@ -155,9 +155,9 @@ int shell_prompt()
 							ir_flags[i] = 1;
 							in_redir[i] = str_copy(commands[i][j+1]);
 						}
-						for(k = j; k < num_args[i]; k++)
-							commands[i][k] = commands[i][k+1];
-						num_args[i]--;
+						for(k = j; k < num_args[i] - 1; k++)
+							commands[i][k] = commands[i][k+2];
+						num_args[i] = num_args[i] - 2;
 					}
 				}
 			}
