@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #include "bc_strlib/bc_strlib.h"
 
@@ -48,15 +49,21 @@ int main(int argc, char **argv)
 
 int shell_prompt()
 {
+	pid_t child_h_pid;     /* Child handler process id */
+	pid_t child_i_pid;     /* Child instance process id */
+
 	int i, j, k;           /* Iteration variables */
 	int num_commands;      /* Number of commands in input */
-	int pid;               /* Child process id */
 	int cf_flag;           /* Command found flag */
 	int acf_flag;          /* All commands found flag */
+	int or_fd;             /* Output redirection file descriptor */
+	int ir_fd;             /* Input redirection file descriptor */
 	int *num_args;         /* Array of num of args for each command */
 	int *ce_flags;         /* Array of concurrent execution flag */
 	int *or_flags;         /* Array of output redirection flag */
 	int *ir_flags;         /* Array of input redirection flag */
+	int **pc_fd;           /* Array to hold previous command to 
+	                          current command file descriptors */
 
 	char *input_string;    /* String to hold user input */
 	char **out_redir;      /* Array of output redirection strings */
@@ -109,8 +116,14 @@ int shell_prompt()
 			if((in_redir = calloc(num_commands, sizeof(char*))) == NULL)
 				return allocation_error("in_redir");
 
+			if((pc_fd = calloc(num_commands, sizeof(int*))) == NULL)
+				return allocation_error("pc_fd");
+
 			for(i = 0; i < num_commands; i++)
 			{
+				if((pc_fd[i] = calloc(2, sizeof(int))) == NULL)
+					return allocation_error("pc_fd[i]");
+
 				if(strcmp_igncase(commands[i][num_args[i]-1], "&") == 0)
 				{
 					ce_flags[i] = 1;
@@ -178,37 +191,105 @@ int shell_prompt()
 			}
 		}
 
-		/*
-		printf("ce_flag: %d\n", ce_flag);
-		if(check_existence(i_argv[0], paths))
+		for(i = 0; i < num_commands; i++)
 		{
-			command = str_copy(i_argv[0]);
-			pid = fork();
-			if(pid == 0)
+			if(pipe(pc_fd[i]) == -1)
+				printf("Error initializing pc_fd[%d]\n", i);
+		}
+
+		child_h_pid = fork();
+		if(child_h_pid == 0)
+		{
+			for(i = 0; i < num_commands; i++)
 			{
-				execvp(command, i_argv);
+				child_i_pid = fork();
+				if(child_i_pid == 0)
+				{
+					if(i > 0)
+					{
+						printf("Child %d replacing stdin for cmd %s with pc_fd[%d][0]\n", getpid(), commands[i][0], i);
+						if(dup2(pc_fd[i][0], fileno(stdin)) == -1)
+							printf("dup2 error replacing stdin\n");
+					}
+					else
+					{
+						printf("Closing both pc_fd[%d][0] and pc_fd[%d][1]\n", i, i);
+						if(ir_flags[i])
+						{
+							ir_fd = open(in_redir[i], O_RDONLY);
+							dup2(0, ir_fd);
+						}
+					}
+					if(i < num_commands - 1)
+					{
+						printf("Child %d replacing stdout for cmd %s with pc_fd[%d][1]\n", getpid(), commands[i][0], i+1);
+						if(dup2(pc_fd[i+1][1], fileno(stdout)) == -1)
+							printf("dup2 error replacing stdout\n");
+					}
+					else
+					{
+						if(or_flags[i])
+						{
+							or_fd = open(out_redir[i], O_WRONLY|O_CREAT,S_IRWXU|S_IRWXG|S_IRWXO);
+						}
+					}
+
+					for(j = 0; j < num_commands; j++)
+					{
+						close(pc_fd[j][0]);
+						close(pc_fd[j][1]);
+					}
+
+					if(i == num_commands - 1)
+					{
+						printf("I am the last command: child %d with cmd %s\n", getpid(), commands[i][0]);
+					}
+					execvp(commands[i][0], commands[i]);
+				}
+				else
+				{
+					close(pc_fd[i][0]);
+					close(pc_fd[i][1]);
+					printf("Waiting for child %d to finish\n", child_i_pid);
+					//if(ce_flags[i])
+						wait(child_i_pid);
+					printf("Child %d has finished\n", child_i_pid);
+				}
 			}
-			else
+			return EXIT_SUCCESS;
+		}
+		else
+		{
+			for(i = 0; i < num_commands; i++)
 			{
-				wait(pid);
+				close(pc_fd[i][0]);
+				close(pc_fd[i][1]);
 			}
-			free(command);
+			wait(child_h_pid);
+			printf("Child handler %d has finished\n", child_h_pid);
 		}
 		
-		ce_flag = 0;
-		for(i = 0; i_argv[i] != NULL; i++)
-			free(i_argv[i]);
-		free(i_argv);
-		*/
+		for(i = 0; i < num_commands; i++)
+		{
+			for(j = 0; j < num_args[i]; j++)
+				free(commands[i][j]);
+			free(commands[i]);
+			free(out_redir[i]);
+			free(in_redir[i]);
+			free(pc_fd[i]);
+		}
+		free(commands);
+		free(num_args);
+		free(out_redir);
+		free(in_redir);
+		free(pc_fd);
+		free(ce_flags);
+		free(or_flags);
+		free(ir_flags);		
 	}
-
-	/*
-	for(i = 0; i_argv[i] != NULL; i++)
-		free(i_argv[i]);
-	free(i_argv);
+	
+	free(input_string);
 	free(paths);
-	*/
-
 	printf("bc_shell stopped.\n");
 
 	return EXIT_SUCCESS;
@@ -375,55 +456,3 @@ int parse_env_var_error()
 	return PARSE_ENV_VAR_ERROR;
 }
 
-
-/*
-int parse_input_old(int *i_argc, char ***i_argv, int *ce_flag)
-{
-	int i;
-	int c;             /* Input character storage 
-	int t;             /* Temporary character storage 
-	char buffer[BUFF_SIZE + 1];
-	char **dp;
-
-	printf("bc_shell-> ");
-	for(i = 0; (c = getchar()) != EOF && c != '\n' && i < BUFF_SIZE; i++)
-	{
-		if(c == '<' || c == '>' || c == '|' || c == '&')
-			if(i != 0 && buffer[i-1] != ' ')
-				buffer[i++] = ' ';
-
-		if(i != 0 && c != ' ')
-		{
-			t = buffer[i-1];
-			if(t == '<' || t == '>' || t == '|' || t == '&')
-				buffer[i++] = ' ';
-		}
-		buffer[i] = c;
-	}
-	buffer[i] = '\0';
-
-	if(DEBUG)
-		printf("Spaced Input: %s\n", buffer);
-
-	*i_argv = chop(buffer, ' ');
-	dp = *i_argv;
-
-	while(*dp != NULL)
-		dp++;
-
-	*i_argc = dp - *i_argv;
-
-	if(strcmp_igncase((*i_argv)[*i_argc-1], "&") == 0)
-	{
-		*ce_flag = 1;
-		free((*i_argv)[*i_argc-1]);
-		(*i_argv)[*i_argc-1] = NULL;
-		*i_argc = *i_argc - 1;
-	}
-
-	if(i_argc == 0 || strcmp_igncase("exit", (*i_argv)[0]) == 0)
-		return 0;
-	else
-		return 1;
-}
-*/
