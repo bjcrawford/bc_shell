@@ -7,10 +7,11 @@
    Description:  */
 
 #include <ctype.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <fcntl.h>
 
 #include "bc_strlib/bc_strlib.h"
 
@@ -105,24 +106,24 @@ int shell_prompt()
 		if(acf_flag)
 		{
 			if((ce_flags = calloc(num_commands, sizeof(int))) == NULL)
-				return allocation_error("ce_flags");
+				return allocation_error("bc_shell.c: shell_prompt(): alloc error for ce_flags");
 			if((or_flags = calloc(num_commands, sizeof(int))) == NULL)
-				return allocation_error("or_flags");
+				return allocation_error("bc_shell.c: shell_prompt(): alloc error for or_flags");
 			if((ir_flags = calloc(num_commands, sizeof(int))) == NULL)
-				return allocation_error("ir_flags");
+				return allocation_error("bc_shell.c: shell_prompt(): alloc error for ir_flags");
 
 			if((out_redir = calloc(num_commands, sizeof(char*))) == NULL)
-				return allocation_error("out_redir");
+				return allocation_error("bc_shell.c: shell_prompt(): alloc error for out_redir");
 			if((in_redir = calloc(num_commands, sizeof(char*))) == NULL)
-				return allocation_error("in_redir");
+				return allocation_error("bc_shell.c: shell_prompt(): alloc error for in_redir");
 
 			if((pc_fd = calloc(num_commands, sizeof(int*))) == NULL)
-				return allocation_error("pc_fd");
+				return allocation_error("bc_shell.c: shell_prompt(): alloc error for pc_fd");
 
 			for(i = 0; i < num_commands; i++)
 			{
 				if((pc_fd[i] = calloc(2, sizeof(int))) == NULL)
-					return allocation_error("pc_fd[i]");
+					return allocation_error("bc_shell.c: shell_prompt(): alloc error for pc_fd[i]");
 
 				if(strcmp_igncase(commands[i][num_args[i]-1], "&") == 0)
 				{
@@ -135,10 +136,13 @@ int shell_prompt()
 				{
 					if(strcmp_igncase(commands[i][j], ">") == 0)
 					{
+						/* Add check and logic for handling 
+						   appended output redirection ">>" */
 						if(i == num_commands - 1 && j < num_args[i] - 1)
 						{
 							or_flags[i] = 1;
-							out_redir[i] = str_copy(commands[i][j+1]);
+							if((out_redir[i] = str_copy(commands[i][j+1])) == NULL)
+								return allocation_error("bc_shell.c: shell_prompt(): alloc error for out_redir[i]");
 						}
 						for(k = j; k < num_args[i] - 1; k++)
 							commands[i][k] = commands[i][k+2];
@@ -153,7 +157,8 @@ int shell_prompt()
 						if(i == 0 && j < num_args[i] - 1)
 						{
 							ir_flags[i] = 1;
-							in_redir[i] = str_copy(commands[i][j+1]);
+							if((in_redir[i] = str_copy(commands[i][j+1])) == NULL)
+								return allocation_error("bc_shell.c: shell_prompt(): alloc error for in_redir[i]");
 						}
 						for(k = j; k < num_args[i] - 1; k++)
 							commands[i][k] = commands[i][k+2];
@@ -308,8 +313,10 @@ int parse_env_var(char ***paths)
 
 	while(environ[i] != NULL && !prefixcmp_igncase(environ[i], "path="))
 		i++;
-	path = replace(environ[i], "PATH=", "");
-	*paths = chop(path, ':');
+	if((path = replace(environ[i], "PATH=", "")) == NULL)
+		return allocation_error("bc_shell.c: parse_env_var(): alloc error for path");
+	if((*paths = chop(path, ':')) == NULL)
+		return allocation_error("bc_shell.c: parse_env_var(): alloc error for paths");
 
 	free(path);
 
@@ -343,7 +350,8 @@ int read_and_space_input(char **input_string)
 	}
 	buffer[i] = '\0';
 
-	*input_string = str_copy(buffer);
+	if((*input_string = str_copy(buffer)) == NULL)
+		return allocation_error("bc_shell.c: read_and_space_input(): alloc error for input_string");
 
 	if(prefixcmp_igncase("exit", buffer))
 		return 0;
@@ -354,16 +362,19 @@ int read_and_space_input(char **input_string)
 int parse_input(char *input_string, int *num_commands, int **num_args, char ****commands)
 {
 	int i = 0;
-	char **command_strings = chop(input_string, '|');
+	char **command_strings;
+
+	if((command_strings = chop(input_string, '|')) == NULL)
+		return allocation_error("bc_shell.c: parse_input(): alloc error for commands_strings");
 
 	for(i = 0; command_strings[i] != NULL; i++);
 	*num_commands = i;
 
 	if((*num_args = calloc(*num_commands, sizeof(int))) == NULL)
-		return allocation_error("num_args");
+		return allocation_error("bc_shell.c: parse_input(): alloc error for num_args");
 
 	if((*commands = calloc(*num_commands, sizeof(char**))) == NULL)
-		return allocation_error("commands");
+		return allocation_error("bc_shell.c: parse_input(): alloc error for commands");
 
 	for(i = 0; i < *num_commands; i++)
 	{
@@ -375,7 +386,8 @@ int parse_input(char *input_string, int *num_commands, int **num_args, char ****
 int parse_command(char *command_string, int *num_args, char ***args)
 {
 	int i = 0;
-	*args = chop(command_string, ' ');
+	if((*args = chop(command_string, ' ')) == NULL)
+		return allocation_error("bc_shell.c: parse_command(): alloc error for args");
 	for(i = 0; (*args)[i] != NULL; i++);
 	*num_args = i;
 }
@@ -396,8 +408,10 @@ int check_existence(char *argv0, char **paths)
 	{
 		for(i = 0; paths[i] != NULL; i++)
 		{
-			temp = append("/", argv0);
-			path = append(paths[i], temp);
+			if((temp = append("/", argv0)) == NULL)
+				return allocation_error("bc_shell.c: check_existence(): alloc error for temp");
+			if((path = append(paths[i], temp)) == NULL)
+				return allocation_error("bc_shell.c: check_existence(): alloc error for path");
 			free(temp);
 			if(access(path, F_OK) != -1)
 			{
@@ -444,7 +458,7 @@ int abs_rel_check(char *s)
    Output: integer, error code for allocation error */
 int allocation_error(char *name)
 {
-	fprintf(stderr, "Error allocating for %s\n", name);
+	perror(name);
 	fprintf(stderr, "Press enter to exit.\n");
 	getchar();
 

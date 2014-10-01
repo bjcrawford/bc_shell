@@ -20,7 +20,6 @@ char *replace(char *s, char *pat, char *rep)
 	char *ns;
 	if((ns = calloc(lns, sizeof(char))) == NULL)
 	{
-		fprintf(stderr, "Error allocating memory");
 		return NULL;
 	}
 

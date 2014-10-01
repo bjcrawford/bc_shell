@@ -11,7 +11,9 @@ char *str_copy(char *s)
 	int l = strlen(s) + 1;
 	char *ns;
 	if((ns = calloc(l, sizeof(char))) == NULL)
+	{
 		return NULL;
+	}
 	char *p = ns;
 	while(*s != '\0')
 		*p++ = *s++;

@@ -15,7 +15,6 @@ char *append(char *s1, char *s2)
 	char *ns;
 	if((ns = calloc(l, sizeof(char))) == NULL)
 	{
-		printf(stderr, "Error allocating memory for append\n");
 		return NULL;
 	}
 	char *p = ns;

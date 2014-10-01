@@ -18,7 +18,6 @@ char **chop(char *s, char c)
 	char **slices;
 	if((slices = calloc(l, sizeof(char*))) == NULL)
 	{
-		fprintf(stderr, "Error allocating memory for chop()\n");
 		return NULL;
 	}
 	char *psb = s;
@@ -31,7 +30,6 @@ char **chop(char *s, char c)
 		int wl = pse - psb;
 		if((slices[i] = calloc(wl, sizeof(char))) == NULL)
 		{
-			fprintf(stderr, "Error allocating memory for chop()\n");
 			return NULL;
 		} 
 		char *pslice = slices[i];
