@@ -38,7 +38,11 @@ int parse_env_var(char***);
 int read_and_space_input(char**);
 int parse_input(char*, int*, int**, char****);
 int parse_command(char*, int*, char***);
+int check_commands(int, char***, char**);
 int check_existence(char*, char**);
+int allocate_flags_memory(int**, int**, int**, int);
+int allocate_redirection_memory(char***, char***, int);
+int allocate_pipe_memory(int***, int);
 int abs_rel_check(char*);
 int allocation_error(char*);
 int parse_env_var_error();
@@ -55,10 +59,12 @@ int shell_prompt()
 
 	int i, j, k;           /* Iteration variables */
 	int num_commands;      /* Number of commands in input */
-	int cf_flag;           /* Command found flag */
-	int acf_flag;          /* All commands found flag */
 	int or_fd;             /* Output redirection file descriptor */
 	int ir_fd;             /* Input redirection file descriptor */
+	int pi_error;          /* parse_input() error code, if any */
+	int afm_error;         /* allocate_flags_memory() error code, if any */
+	int arm_error;         /* allocate_redirection_memory() error code, if any */
+	int apm_error;         /* allocate_pipe_memory() error code, if any */
 	int *num_args;         /* Array of num of args for each command */
 	int *ce_flags;         /* Array of concurrent execution flag */
 	int *or_flags;         /* Array of output redirection flag */
@@ -79,7 +85,9 @@ int shell_prompt()
 	//while(parse_input(&i_argc, &i_argv, &ce_flag))
 	while(read_and_space_input(&input_string))
 	{		
-		parse_input(input_string, &num_commands, &num_args, &commands);
+		pi_error = parse_input(input_string, &num_commands, &num_args, &commands);
+		if(pi_error != EXIT_SUCCESS)
+			return pi_error;
 
 		if(DEBUG)
 		{
@@ -95,36 +103,27 @@ int shell_prompt()
 			}
 		}
 
-		acf_flag = 1;
-		for(i = 0; i < num_commands && acf_flag; i++)
+		
+
+		if(check_commands(num_commands, commands, paths)) /* If all commands are valid */
 		{
-			cf_flag = check_existence(commands[i][0], paths);
-			if(!cf_flag)
-				acf_flag = 0;
-		}
+			/* Allocate memory */
+			afm_error = allocate_flags_memory(&ce_flags, &or_flags, &ir_flags, num_commands);
+			if(afm_error != EXIT_SUCCESS)
+				return afm_error;
 
-		if(acf_flag)
-		{
-			if((ce_flags = calloc(num_commands, sizeof(int))) == NULL)
-				return allocation_error("bc_shell.c: shell_prompt(): alloc error for ce_flags");
-			if((or_flags = calloc(num_commands, sizeof(int))) == NULL)
-				return allocation_error("bc_shell.c: shell_prompt(): alloc error for or_flags");
-			if((ir_flags = calloc(num_commands, sizeof(int))) == NULL)
-				return allocation_error("bc_shell.c: shell_prompt(): alloc error for ir_flags");
+			arm_error = allocate_redirection_memory(&out_redir, &in_redir, num_commands);
+			if(arm_error != EXIT_SUCCESS)
+				return arm_error;
 
-			if((out_redir = calloc(num_commands, sizeof(char*))) == NULL)
-				return allocation_error("bc_shell.c: shell_prompt(): alloc error for out_redir");
-			if((in_redir = calloc(num_commands, sizeof(char*))) == NULL)
-				return allocation_error("bc_shell.c: shell_prompt(): alloc error for in_redir");
+			apm_error = allocate_pipe_memory(&pc_fd, num_commands);
+			if(apm_error != EXIT_SUCCESS)
+				return apm_error;
 
-			if((pc_fd = calloc(num_commands, sizeof(int*))) == NULL)
-				return allocation_error("bc_shell.c: shell_prompt(): alloc error for pc_fd");
-
+			/* Check each command for operators */
 			for(i = 0; i < num_commands; i++)
 			{
-				if((pc_fd[i] = calloc(2, sizeof(int))) == NULL)
-					return allocation_error("bc_shell.c: shell_prompt(): alloc error for pc_fd[i]");
-
+				/* Check for concurrent execution operator */
 				if(strcmp_igncase(commands[i][num_args[i]-1], "&") == 0)
 				{
 					ce_flags[i] = 1;
@@ -132,6 +131,7 @@ int shell_prompt()
 					num_args[i]--;
 				}
 
+				/* Check for output redirection operator */
 				for(j = 0; j < num_args[i]; j++)
 				{
 					if(strcmp_igncase(commands[i][j], ">") == 0)
@@ -150,6 +150,7 @@ int shell_prompt()
 					}
 				}
 
+				/* Check for input redirection operator */
 				for(j = 0; j < num_args[i]; j++)
 				{
 					if(strcmp_igncase(commands[i][j], "<") == 0)
@@ -192,6 +193,7 @@ int shell_prompt()
 				}
 			}
 
+			/* Set up a previous cmd to current cmd pipe for each command */
 			for(i = 0; i < num_commands; i++)
 			{
 				if(pipe(pc_fd[i]) == -1)
@@ -381,6 +383,8 @@ int parse_input(char *input_string, int *num_commands, int **num_args, char ****
 		strip(command_strings[i]);
 		parse_command(command_strings[i], &((*num_args)[i]), &((*commands)[i]));
 	}
+
+	return EXIT_SUCCESS;
 }
 
 int parse_command(char *command_string, int *num_args, char ***args)
@@ -390,6 +394,19 @@ int parse_command(char *command_string, int *num_args, char ***args)
 		return allocation_error("bc_shell.c: parse_command(): alloc error for args");
 	for(i = 0; (*args)[i] != NULL; i++);
 	*num_args = i;
+}
+
+int check_commands(int num_commands, char ***commands, char **paths)
+{
+	int i;
+	int result = 1;
+	for(i = 0; i < num_commands && result; i++)
+	{
+		if(!check_existence(commands[i][0], paths))
+			result = 0;
+	}
+
+	return result;
 }
 
 int check_existence(char *argv0, char **paths)
@@ -440,6 +457,43 @@ int check_existence(char *argv0, char **paths)
 		printf("-bc_shell: %s: command not found\n", argv0);
 
 	return result;
+}
+
+int allocate_flags_memory(int **ce_flags, int **or_flags, int **ir_flags, int num_commands)
+{
+	if((*ce_flags = calloc(num_commands, sizeof(int))) == NULL)
+		return allocation_error("bc_shell.c: allocate_flags_memory(): alloc error for ce_flags");
+	if((*or_flags = calloc(num_commands, sizeof(int))) == NULL)
+		return allocation_error("bc_shell.c: allocate_flags_memory(): alloc error for or_flags");
+	if((*ir_flags = calloc(num_commands, sizeof(int))) == NULL)
+		return allocation_error("bc_shell.c: allocate_flags_memory(): alloc error for ir_flags");
+
+	return EXIT_SUCCESS;
+}
+
+int allocate_redirection_memory(char ***out_redir, char ***in_redir, int num_commands)
+{
+	if((*out_redir = calloc(num_commands, sizeof(char*))) == NULL)
+		return allocation_error("bc_shell.c: allocate_redirection_memory(): alloc error for out_redir");
+	if((*in_redir = calloc(num_commands, sizeof(char*))) == NULL)
+		return allocation_error("bc_shell.c: allocate_redirection_memory(): alloc error for in_redir");
+
+	return EXIT_SUCCESS;
+}
+
+int allocate_pipe_memory(int ***pc_fd, int num_commands)
+{
+	int i;
+	if((*pc_fd = calloc(num_commands, sizeof(int*))) == NULL)
+		return allocation_error("bc_shell.c: allocate_pipe_memory(): alloc error for pc_fd");
+
+	for(i = 0; i < num_commands; i++)
+	{
+		if(((*pc_fd)[i] = calloc(2, sizeof(int))) == NULL)
+			return allocation_error("bc_shell.c: allocate_pipe_memory(): alloc error for pc_fd[i]");
+	}
+
+	return EXIT_SUCCESS;
 }
 
 /* Checks a string for an absolute or relative location prefix
