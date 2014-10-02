@@ -13,6 +13,7 @@ char  *append(char*, char*);
 char **chop(char*, char);
 int    count_occurences(char*, char*);
 void   lstrip(char*);
+int    is_blank(char*);
 int    prefixcmp_igncase(char*, char*);
 char  *replace(char*, char*, char*);
 void   rstrip(char*);
