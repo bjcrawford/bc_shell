@@ -23,8 +23,8 @@
 
 /* Error codes */
 #define EXIT_SUCCESS 0
-#define ALLOC_ERROR 1
-#define PARSE_ENV_VAR_ERROR 2
+#define ALLOC_ERROR -1
+#define PARSE_ENV_VAR_ERROR -2
 
 /* Constants */
 #define BUFF_SIZE 300     /* Input buffer size */
@@ -82,7 +82,6 @@ int shell_prompt()
 	if(!parse_env_var(&paths))
 		return parse_env_var_error();
 
-	//while(parse_input(&i_argc, &i_argv, &ce_flag))
 	while(read_and_space_input(&input_string))
 	{		
 		pi_error = parse_input(input_string, &num_commands, &num_args, &commands);
@@ -308,6 +307,14 @@ int shell_prompt()
 	return EXIT_SUCCESS;
 }
 
+/* Parses $PATH from the environment variable into separate paths to be
+   stored in an array of c strings.
+
+   Input:  Address of a double pointer to char - Initally undefined, after the
+           function it will contain an array of c strings of the paths in $PATH
+
+   Output: Integer - Returns 1 if the paths were succesfully read and stored,
+           otherwise returns error code. */
 int parse_env_var(char ***paths)
 {
 	int i = 0;
@@ -322,12 +329,18 @@ int parse_env_var(char ***paths)
 
 	free(path);
 
-	if(*paths == NULL)
-		return 0;
-	else
-		return 1;
+	return 1;
 }
 
+/* Reads input from stdin and stores the input into a c string. The input is
+   modified by inserting whitespace between all operators and arguments.
+
+   Input:  Address of a pointer to char - Initally undefined, after the
+           function it will contain a c string of the input.
+
+   Output: Integer - Returns 1 if the input was succesfully read and stored,
+           returns 0 if the input == 'exit',
+           otherwise returns error code. */
 int read_and_space_input(char **input_string)
 {
 	int i;
@@ -361,6 +374,27 @@ int read_and_space_input(char **input_string)
 		return 1;
 }
 
+/* Parses a given string of commands separated by '|' into string of arguments
+   separated by whitespace which is then parsed into an array of arguments.
+   The caller is responsible for freeing the dynamically allocated
+   memory for num_args and commands(commands[i][j], commands[i], and commands).
+
+   Input:  C string - A string containing a multiple commands separated by "|"
+           with arguments separated by whitespace.
+
+           Address of an integer - Intially undefined, after the function
+           it will contain the number of commands in the input string.
+
+           Address of a pointer to integer - Initally undefined, after the
+           function it will contain an array of ints, with each representing
+           the number of arguments in each respective command.
+
+           Address of a triple pointer to char - Initally undefined, after the function
+           it will contain an array of commands with each element being an array of 
+           c strings with each element being a separate argument from the given 
+           command.
+
+   Output: Integer - EXIT_SUCCESS if the command was parsed, otherwise error code */
 int parse_input(char *input_string, int *num_commands, int **num_args, char ****commands)
 {
 	int i = 0;
@@ -384,9 +418,31 @@ int parse_input(char *input_string, int *num_commands, int **num_args, char ****
 		parse_command(command_strings[i], &((*num_args)[i]), &((*commands)[i]));
 	}
 
+	for(i = 0; i < *num_commands; i++)
+	{
+		free(commands_strings[i]);
+	}
+	free(command_strings);
+
 	return EXIT_SUCCESS;
 }
 
+/* Parses a given string of arguments separated by whitespace into an array 
+   of arguments. The caller is responsible for freeing the dynamically allocated
+   memory in args(each args[i] and args itself)
+
+   Input:  C string - A string containing a single command with arguments
+           separated by whitespace.
+
+           Address of an integer - Intially undefined, after the function
+           it will contain the number of arguments in the command string.
+
+           Address of a double pointer to char - Initally undefined,
+           after the function it will contain an array of c strings
+           with each element being a separate argument from the given 
+           command string.
+
+   Output: Integer - EXIT_SUCCESS if the command was parsed, otherwise error code */
 int parse_command(char *command_string, int *num_args, char ***args)
 {
 	int i = 0;
@@ -394,21 +450,39 @@ int parse_command(char *command_string, int *num_args, char ***args)
 		return allocation_error("bc_shell.c: parse_command(): alloc error for args");
 	for(i = 0; (*args)[i] != NULL; i++);
 	*num_args = i;
+
+	return EXIT_SUCCESS;
 }
 
+/* Checks the given array of commands for the existence of each command 
+
+   Input:  Integer - The number of commands in the second argument.
+
+           Array of pointers to arrays of c strings - commands[0][0] would
+           reference the first argument of the first command.
+
+           Array of c strings - Contains the file paths to check.
+
+   Output: Integer - 1 if all commands were located, otherwise 0. */
 int check_commands(int num_commands, char ***commands, char **paths)
 {
 	int i;
 	int result = 1;
 	for(i = 0; i < num_commands && result; i++)
 	{
-		if(!check_existence(commands[i][0], paths))
-			result = 0;
+		result = check_existence(commands[i][0], paths);
 	}
 
 	return result;
 }
 
+/* Checks the file paths contained in paths for the existence of the file name in argv0. 
+
+   Input:  C string - Contains the name the file to check for existence.
+
+           Array of c strings - Contains the file paths to check. 
+
+   Output: Integer - 1 if the file was located, otherwise 0. */
 int check_existence(char *argv0, char **paths)
 {
 	int i;
@@ -459,6 +533,23 @@ int check_existence(char *argv0, char **paths)
 	return result;
 }
 
+/* Dynamically allocates memory for arrays of pointers to integers. This is used for
+   allocating memory for the flags used to determine if a command uses '&', '<', or 
+   '>' operators. The caller is responsible for freeing the dynamically allocated 
+   memory for ce_flags, or_flags, and ir_flags.
+
+   Input:  Address of a pointer of type int - Initially undefined, after the function it will
+           hold an array of zeroed integers used for concurrent execution flags.
+
+           Address of a pointer of type int - Initially undefined, after the function it will
+           hold an array of zeroed integers used for output redirection flags.
+
+           Address of a pointer of type int - Initially undefined, after the function it will
+           hold an array of zeroed integers used for input redirection flags.
+
+           Integer - the number of integers to allocate space for.
+
+   Output: Integer - EXIT_SUCCESS on successful allocation, otherwise error code. */
 int allocate_flags_memory(int **ce_flags, int **or_flags, int **ir_flags, int num_commands)
 {
 	if((*ce_flags = calloc(num_commands, sizeof(int))) == NULL)
@@ -471,6 +562,20 @@ int allocate_flags_memory(int **ce_flags, int **or_flags, int **ir_flags, int nu
 	return EXIT_SUCCESS;
 }
 
+/* Dynamically allocates memory for arrays of pointers to c strings. This is used for
+   allocating memory for the filenames of the output and input redirection destinations.
+   The caller is responsible for freeing the dynamically allocated memory for out_redir 
+   and in_redir.
+
+   Input:  Address of a double pointer of type char - Initially undefined, after the function
+           it will hold the arrays containing the c strings of output redirection filenames.
+
+           Address of a double pointer of type char - Initially undefined, after the function
+           it will hold the arrays containing the c strings of input redirection filenames.
+
+           Integer - the number of pointers to c strings to allocate space for.
+
+   Output: Integer - EXIT_SUCCESS on successful allocation, otherwise error code. */
 int allocate_redirection_memory(char ***out_redir, char ***in_redir, int num_commands)
 {
 	if((*out_redir = calloc(num_commands, sizeof(char*))) == NULL)
@@ -481,6 +586,17 @@ int allocate_redirection_memory(char ***out_redir, char ***in_redir, int num_com
 	return EXIT_SUCCESS;
 }
 
+/* Dynamically allocates memory for an array of pointers to arrays containing two 
+   pointers to ints. This is used for allocating memory for pipe file descriptors.
+   The caller is responsible for freeing the dynamically allocate memory for
+   pc_fd(each pc_fd[i] as well as pc_fd itself).
+
+   Input:  Address of a double pointer of type integer - Initially undefined, after 
+           the function it will hold the arrays containing the pipe file descriptors.
+
+           Integer - the number of pointers to arrays to allocate space for.
+
+   Output: Integer - EXIT_SUCCESS on successful allocation, otherwise error code. */
 int allocate_pipe_memory(int ***pc_fd, int num_commands)
 {
 	int i;
@@ -496,10 +612,12 @@ int allocate_pipe_memory(int ***pc_fd, int num_commands)
 	return EXIT_SUCCESS;
 }
 
-/* Checks a string for an absolute or relative location prefix
-   Input: character pointer, string containing filename
-   Output: integer, 1 if the filename has a absolute or relative 
-           prefix, otherwise 0 */
+/* Checks a string for an absolute or relative location prefix.
+
+   Input:  Character pointer - string containing filename.
+
+   Output: Integer - 1 if the filename has a absolute or relative 
+           prefix, otherwise 0. */
 int abs_rel_check(char *s)
 {
 	return prefixcmp_igncase(s, "/")  ||
@@ -507,9 +625,11 @@ int abs_rel_check(char *s)
 	       prefixcmp_igncase(s, "../");
 }
 
-/* Reports an allocation error
-   Input: character pointer, name of the allocation attempted
-   Output: integer, error code for allocation error */
+/* Reports an allocation error.
+
+   Input:  Character pointer - name of the allocation attempted.
+
+   Output: Integer - error code for allocation error. */
 int allocation_error(char *name)
 {
 	perror(name);
@@ -519,8 +639,11 @@ int allocation_error(char *name)
 	return ALLOC_ERROR;
 }
 
-/* Reports a path parsing error
-   Output: integer, error code for allocation error */
+/* Reports a path parsing error.
+
+   Input:  None.
+
+   Output: Integer - error code for allocation error. */
 int parse_env_var_error()
 {
 	fprintf(stderr, "Error parsing environment variables\n");
