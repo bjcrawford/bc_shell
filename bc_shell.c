@@ -40,7 +40,7 @@ int parse_input(char*, int*, int**, char****);
 int parse_command(char*, int*, char***);
 int check_commands(int, char***, char**);
 int check_existence(char*, char**);
-int allocate_flags_memory(int**, int**, int**, int);
+int allocate_flags_memory(int**, int **, int**, int**, int);
 int allocate_redirection_memory(char***, char***, int);
 int allocate_pipe_memory(int***, int);
 int abs_rel_check(char*);
@@ -66,9 +66,10 @@ int shell_prompt()
 	int arm_error;         /* allocate_redirection_memory() error code, if any */
 	int apm_error;         /* allocate_pipe_memory() error code, if any */
 	int *num_args;         /* Array of num of args for each command */
-	int *ce_flags;         /* Array of concurrent execution flag */
-	int *or_flags;         /* Array of output redirection flag */
-	int *ir_flags;         /* Array of input redirection flag */
+	int *ce_flags;         /* Array of concurrent execution flags */
+	int *or_flags;         /* Array of output redirection flags */
+	int *aor_flags;        /* Array of appended output redirection flags */
+	int *ir_flags;         /* Array of input redirection flags */
 	int **pc_fd;           /* Array to hold previous command to 
 	                          current command file descriptors */
 
@@ -83,7 +84,11 @@ int shell_prompt()
 		return parse_env_var_error();
 
 	while(read_and_space_input(&input_string))
-	{		
+	{	
+		/* If input is blank, return to top to while loop */	
+		if(is_blank(input_string))
+			continue;
+
 		pi_error = parse_input(input_string, &num_commands, &num_args, &commands);
 		if(pi_error != EXIT_SUCCESS)
 			return pi_error;
@@ -107,7 +112,7 @@ int shell_prompt()
 		if(check_commands(num_commands, commands, paths)) /* If all commands are valid */
 		{
 			/* Allocate memory */
-			afm_error = allocate_flags_memory(&ce_flags, &or_flags, &ir_flags, num_commands);
+			afm_error = allocate_flags_memory(&ce_flags, &or_flags, &aor_flags, &ir_flags, num_commands);
 			if(afm_error != EXIT_SUCCESS)
 				return afm_error;
 
@@ -133,13 +138,14 @@ int shell_prompt()
 				/* Check for output redirection operator */
 				for(j = 0; j < num_args[i]; j++)
 				{
-					if(strcmp_igncase(commands[i][j], ">") == 0)
+					if(strcmp_igncase(commands[i][j], ">") == 0 || strcmp_igncase(commands[i][j], ">>") == 0)
 					{
-						/* Add check and logic for handling 
-						   appended output redirection ">>" */
 						if(i == num_commands - 1 && j < num_args[i] - 1)
 						{
-							or_flags[i] = 1;
+							if(strcmp_igncase(commands[i][j], ">") == 0)
+								or_flags[i] = 1;
+							else
+								aor_flags[i]= 1;
 							if((out_redir[i] = str_copy(commands[i][j+1])) == NULL)
 								return allocation_error("bc_shell.c: shell_prompt(): alloc error for out_redir[i]");
 						}
@@ -173,7 +179,8 @@ int shell_prompt()
 				{
 					printf("ce_flags[%d]: %d\n", i, ce_flags[i]);
 					printf("or_flags[%d]: %d\n", i, or_flags[i]);
-					if(or_flags[i])
+					printf("aor_flags[%d]: %d\n", i, aor_flags[i]);
+					if(or_flags[i] || aor_flags[i])
 						printf("out_redir[%d]: %s\n", i, out_redir[i]);
 					printf("ir_flags[%d]: %d\n", i, ir_flags[i]);
 					if(ir_flags[i])
@@ -233,10 +240,13 @@ int shell_prompt()
 						}
 						else /* If the last of the "piped" together commands */
 						{
-							if(or_flags[i]) /* If the output redirection flag is set */
+							if(or_flags[i] || aor_flags[i]) /* If the output redirection flag is set */
 							{
 								/* Open output redirection and use to replace stdout */
-								or_fd = open(out_redir[i], O_WRONLY|O_CREAT,S_IRWXU|S_IRWXG|S_IRWXO);
+								if(or_flags[i])
+									or_fd = open(out_redir[i], O_WRONLY|O_CREAT,S_IRWXU|S_IRWXG|S_IRWXO);
+								else
+									or_fd = open(out_redir[i], O_WRONLY|O_APPEND|O_CREAT,S_IRWXU|S_IRWXG|S_IRWXO);
 								if(dup2(or_fd, fileno(stdout)) == -1)
 									printf("dup2 error replacing stdout with or_fd\n");
 							}
@@ -247,7 +257,7 @@ int shell_prompt()
 						{
 							close(pc_fd[j][0]);
 							close(pc_fd[j][1]);
-							if(or_flags[i])
+							if(or_flags[i] || aor_flags[i])
 								close(or_fd);
 							if(ir_flags[i])
 								close(ir_fd);
@@ -296,6 +306,7 @@ int shell_prompt()
 			free(pc_fd);
 			free(ce_flags);
 			free(or_flags);
+			free(aor_flags);
 			free(ir_flags);		
 		}
 	}
@@ -333,42 +344,74 @@ int parse_env_var(char ***paths)
 }
 
 /* Reads input from stdin and stores the input into a c string. The input is
-   modified by inserting whitespace between all operators and arguments.
+   modified by inserting whitespace between all operators and arguments. The 
+   caller is responsible for freeing the dynamically allocated memory for
+   input_string 
 
    Input:  Address of a pointer to char - Initally undefined, after the
            function it will contain a c string of the input.
 
-   Output: Integer - Returns 1 if the input was succesfully read and stored,
+   Output: Integer - Returns 1 if the input was successfully read and stored,
            returns 0 if the input == 'exit',
            otherwise returns error code. */
 int read_and_space_input(char **input_string)
 {
-	int i;
-	int c;             /* Input character storage */
-	int t;             /* Temporary character storage */
-	char buffer[BUFF_SIZE + 1];
+	int i;                        /* Iteration variable */
+	int c;                        /* Input character storage */
+	int t;                        /* Temporary character storage */
+	char buffer[BUFF_SIZE + 1];   /* Input buffer */
 
 	printf("bc_shell-> ");
+
+	/* Get chars until EOF or newline is detected or until buffer size is exceeded */
 	for(i = 0; (c = getchar()) != EOF && c != '\n' && i < BUFF_SIZE; i++)
 	{
-		if(c == '<' || c == '>' || c == '|' || c == '&')
+		/* If current char is operator and previous char is not 
+		   whitespace, add whitespace before operator */
+		if(c == '<' || c == '|' || c == '&')
+		{
 			if(i != 0 && buffer[i-1] != ' ')
+			{
 				buffer[i++] = ' ';
+			}
+		}
+		/* If current char is '>' and previous char is not '>'
+		   add whitespace before operator */
+		else if(c == '>')
+		{
+			if(i != 0 && buffer[i-1] != '>' && buffer[i-1] != ' ')
+			{
+				buffer[i++] = ' ';
+			}
+		}
 
+
+		/* If current char is not the first character of the input and 
+		   is not whitespace and previous char is operator, add
+		   whitespace after operator */
 		if(i != 0 && c != ' ')
 		{
 			t = buffer[i-1];
-			if(t == '<' || t == '>' || t == '|' || t == '&')
+			if(t == '<' || t == '|' || t == '&')
+			{
 				buffer[i++] = ' ';
+			}
+			else if(t == '>' && buffer[i-1] != '>')
+			{
+				buffer[i++] = ' ';
+			}
 		}
+
+		/* Add current char to buffer */
 		buffer[i] = c;
 	}
 	buffer[i] = '\0';
 
+	/* Copy buffer into input string */
 	if((*input_string = str_copy(buffer)) == NULL)
 		return allocation_error("bc_shell.c: read_and_space_input(): alloc error for input_string");
 
-	if(prefixcmp_igncase("exit", buffer))
+	if(c == -1 || prefixcmp_igncase("exit", buffer))
 		return 0;
 	else
 		return 1;
@@ -420,7 +463,7 @@ int parse_input(char *input_string, int *num_commands, int **num_args, char ****
 
 	for(i = 0; i < *num_commands; i++)
 	{
-		free(commands_strings[i]);
+		free(command_strings[i]);
 	}
 	free(command_strings);
 
@@ -538,24 +581,26 @@ int check_existence(char *argv0, char **paths)
    '>' operators. The caller is responsible for freeing the dynamically allocated 
    memory for ce_flags, or_flags, and ir_flags.
 
-   Input:  Address of a pointer of type int - Initially undefined, after the function it will
+   Input:  Address of a pointer to int - Initially undefined, after the function it will
            hold an array of zeroed integers used for concurrent execution flags.
 
-           Address of a pointer of type int - Initially undefined, after the function it will
+           Address of a pointer to int - Initially undefined, after the function it will
            hold an array of zeroed integers used for output redirection flags.
 
-           Address of a pointer of type int - Initially undefined, after the function it will
+           Address of a pointer to int - Initially undefined, after the function it will
            hold an array of zeroed integers used for input redirection flags.
 
            Integer - the number of integers to allocate space for.
 
    Output: Integer - EXIT_SUCCESS on successful allocation, otherwise error code. */
-int allocate_flags_memory(int **ce_flags, int **or_flags, int **ir_flags, int num_commands)
+int allocate_flags_memory(int **ce_flags, int **or_flags, int **aor_flags, int **ir_flags, int num_commands)
 {
 	if((*ce_flags = calloc(num_commands, sizeof(int))) == NULL)
 		return allocation_error("bc_shell.c: allocate_flags_memory(): alloc error for ce_flags");
 	if((*or_flags = calloc(num_commands, sizeof(int))) == NULL)
 		return allocation_error("bc_shell.c: allocate_flags_memory(): alloc error for or_flags");
+	if((*aor_flags = calloc(num_commands, sizeof(int))) == NULL)
+		return allocation_error("bc_shell.c: allocate_flags_memory(): alloc error for aor_flags");
 	if((*ir_flags = calloc(num_commands, sizeof(int))) == NULL)
 		return allocation_error("bc_shell.c: allocate_flags_memory(): alloc error for ir_flags");
 
@@ -567,10 +612,10 @@ int allocate_flags_memory(int **ce_flags, int **or_flags, int **ir_flags, int nu
    The caller is responsible for freeing the dynamically allocated memory for out_redir 
    and in_redir.
 
-   Input:  Address of a double pointer of type char - Initially undefined, after the function
+   Input:  Address of a double pointer to char - Initially undefined, after the function
            it will hold the arrays containing the c strings of output redirection filenames.
 
-           Address of a double pointer of type char - Initially undefined, after the function
+           Address of a double pointer to char - Initially undefined, after the function
            it will hold the arrays containing the c strings of input redirection filenames.
 
            Integer - the number of pointers to c strings to allocate space for.
@@ -591,7 +636,7 @@ int allocate_redirection_memory(char ***out_redir, char ***in_redir, int num_com
    The caller is responsible for freeing the dynamically allocate memory for
    pc_fd(each pc_fd[i] as well as pc_fd itself).
 
-   Input:  Address of a double pointer of type integer - Initially undefined, after 
+   Input:  Address of a double pointer to int - Initially undefined, after 
            the function it will hold the arrays containing the pipe file descriptors.
 
            Integer - the number of pointers to arrays to allocate space for.
@@ -614,7 +659,7 @@ int allocate_pipe_memory(int ***pc_fd, int num_commands)
 
 /* Checks a string for an absolute or relative location prefix.
 
-   Input:  Character pointer - string containing filename.
+   Input:  C string - string containing filename.
 
    Output: Integer - 1 if the filename has a absolute or relative 
            prefix, otherwise 0. */
@@ -627,7 +672,7 @@ int abs_rel_check(char *s)
 
 /* Reports an allocation error.
 
-   Input:  Character pointer - name of the allocation attempted.
+   Input:  C string - name of the allocation attempted.
 
    Output: Integer - error code for allocation error. */
 int allocation_error(char *name)
