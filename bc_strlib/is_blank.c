@@ -5,8 +5,14 @@
 
 #include "bc_strlib.h"
 
-/* Returns 1 is s is NULL, consists only of the null character ('\0')
-   or only whitespace. Returns 0 otherwise. */
+/* Checks if the given string s is NULL, consists only of the null 
+character ('\0') or only whitespace.
+
+   Input:  C string - The string to be checked
+
+   Output: Integer - Returns 1 if string s is NULL, consists only of
+           the null character '\0', or only whitespace. Returns 0
+           otherwise */
 int is_blank(char *s)
 {
 	if(s == NULL || *s == '\0')

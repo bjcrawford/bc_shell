@@ -6,6 +6,13 @@
 #include "bc_strlib.h"
 #include <stdio.h>
 
+/* Creates a copy of a given string. The caller is responsible
+   for freeing the dynamically allocated memory for the
+   returned string.
+
+   Input:  C string - The string to copied
+
+   Output: C string - A copy of the given string */
 char *str_copy(char *s)
 {
 	int l = strlen(s) + 1;

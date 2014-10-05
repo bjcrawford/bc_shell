@@ -6,6 +6,15 @@
 #include "bc_strlib.h"
 #include <stdlib.h>
 
+/* Chops the given c string into a set of c strings delimiting
+   by a given character.
+
+   Input:  C string - The string to be chopped
+           Char - The character to be used as a delimiter
+
+   Output: Array of C strings - The strings chopped from the 
+           original string given delimited by the given
+           character */
 char **chop(char *s, char c)
 {
 	if(s == NULL)

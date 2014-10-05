@@ -6,10 +6,15 @@
 #include "bc_strlib.h"
 #include <ctype.h>
 
-/* Compares strings s1 and s2 ignoring case. Returns a negative
-   number if s1 is lexicographically less than s2, a positive 
-   number if s1 is lexicographically greater than s2, and zero
-   if the two strings are equivalent */ 
+/* Compares strings s1 and s2 ignoring case. 
+
+   Input:  C string - A string to be compared
+           C string - A string to be compared
+
+   Output: Integer - Returns a negative
+           number if s1 is lexicographically less than s2, a positive 
+           number if s1 is lexicographically greater than s2, and zero
+           if the two strings are equivalent  */
 int strcmp_igncase(char *s1, char*s2)
 {
 	char *ps1 = s1;

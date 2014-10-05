@@ -5,7 +5,13 @@
 
 #include "bc_strlib.h"
 
-/* Removes the trailing whitespace from string s */
+/* Removes the trailing whitespace from string s. String s is
+   modified by this function.
+
+   Input:  C string - The string to remove the trailing 
+           whitespace from
+
+   Output: None */
 void rstrip(char *s)
 {
 	char *ps = s + strlen(s) - 1;

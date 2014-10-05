@@ -7,7 +7,18 @@
 #include <stdlib.h>
 
 /* Returns a copy of the string s, but with each instance of
-   string pat replaced with string rep. */
+   string pat replaced with string rep. The caller is responsible
+   for freeing the dynamically allocated memory for the returned
+   c string. 
+
+   Input:  C string - The string to be modified
+           C string - The string containing the pattern
+           to be replaced
+           C string - The string containing the pattern
+           to replace with
+
+   Output: C string - A copy of s with all instances of pat
+           replaced with rep */
 char *replace(char *s, char *pat, char *rep)
 {
 	if(s == NULL)

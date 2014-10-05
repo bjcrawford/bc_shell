@@ -1,10 +1,36 @@
 /* File: bc_shell.c
    Author: Brett Crawford
-   Date: 2014-
+   Date: 2014-10-08
    Prof: Kwatny
    TAs: Liang and Casey
    Course: CIS 3207, Sec 2
-   Description:  */
+   Description: This program is a command line interpreter. When lauched, the 
+                program will provide a prompt to the user allowing them to 
+                enter commands. If no input is received (i.e., user presses 
+                enter) the command line interpreter will display the command
+                prompt again. If the input begins with 'exit' or the input
+                is ctrl-d, the program will exit with notification to the user.
+                With all other inputs, the command line interpreter will take the 
+                input and parse it into commands (separated by '|') and arguments 
+                (separated by ' '). The program will then check all of the commands 
+                to make sure they refer to valid commands on the machine using the 
+                paths found in $PATH. If any of the commands are not valid, the 
+                user will be notified and the prompt will be redisplayed. If all 
+                of the commands are found, the program will check the input for 
+                any of the following operators: > (output redirection), >> (appended 
+                output redirection) , < (input redirection), | (pipe redirection), 
+                and & (concurrent execution). If no file is specified after >, >>, 
+                or < the program will notify the user of a syntax error. Once all 
+                the commands, arguments, and operators have been account for, the 
+                program will begin launching the commands. The command line 
+                interpreter will fork a child (the child handler) which will handle 
+                the forking of a child for each command entered. Once the child 
+                handler has successfully created all the necessary children, it
+                will exit. At this point, control will return to the command line
+                interpreter and all of the dynamically allocated memory used will 
+                be freed. The program will then display the prompt and wait for 
+                user input once again.
+                 */
 
 #include <ctype.h>
 #include <errno.h>
@@ -18,13 +44,9 @@
 #define FALSE 0
 #define TRUE 1
 
-/* Flags */
-#define DEBUG 1
-
 /* Error codes */
 #define EXIT_SUCCESS 0
-#define ALLOC_ERROR -1
-#define PARSE_ENV_VAR_ERROR -2
+#define ERROR -1
 
 /* Constants */
 #define BUFF_SIZE 300     /* Input buffer size */
@@ -33,7 +55,6 @@
 extern char **environ;
 
 /* Function declarations */
-int shell_prompt();
 int parse_env_var(char***);
 int read_and_space_input(char**);
 int parse_input(char*, int*, int**, char****);
@@ -44,15 +65,14 @@ int allocate_flags_memory(int**, int **, int**, int**, int);
 int allocate_redirection_memory(char***, char***, int);
 int allocate_pipe_memory(int***, int);
 int abs_rel_check(char*);
-int allocation_error(char*);
-int parse_env_var_error();
+int report_error(char*);
 
-int main(int argc, char **argv)
-{
-	return shell_prompt();
-}
+/* The main logic loop for the commands line interpreter
 
-int shell_prompt()
+   Input:  None
+
+   Output: EXIT_SUCCESS on success, otherwise error code */
+int main()
 {
 	pid_t child_h_pid;     /* Child handler process id */
 	pid_t child_i_pid;     /* Child instance process id */
@@ -80,34 +100,21 @@ int shell_prompt()
 	char ***commands;      /* Array of commands,
 	                          each command is an array of args, */
 
+	/* Parse the paths in $PATH from the environment variable */
 	if(!parse_env_var(&paths))
-		return parse_env_var_error();
+		return report_error("bc_shell.c: main(): Error parsing environment variables");
 
+	/* Read input while the exit conditions are not met */
 	while(read_and_space_input(&input_string))
 	{	
 		/* If input is blank, return to top to while loop */	
 		if(is_blank(input_string))
 			continue;
 
+		/* Parse the input into commands, operators, and arguments */
 		pi_error = parse_input(input_string, &num_commands, &num_args, &commands);
 		if(pi_error != EXIT_SUCCESS)
 			return pi_error;
-
-		if(DEBUG)
-		{
-			printf("input_string: %s\n", input_string);
-			printf("num_commands: %d\n", num_commands);
-			for(i = 0; i < num_commands; i++)
-			{
-				printf("num_args[%d]: %d\n", i, num_args[i]);
-				for(j = 0; j < num_args[i]; j++)
-				{
-					printf("commands[%d][%d]: %s\n", i, j, commands[i][j]);
-				}
-			}
-		}
-
-		
 
 		if(check_commands(num_commands, commands, paths)) /* If all commands are valid */
 		{
@@ -147,7 +154,7 @@ int shell_prompt()
 							else
 								aor_flags[i]= 1;
 							if((out_redir[i] = str_copy(commands[i][j+1])) == NULL)
-								return allocation_error("bc_shell.c: shell_prompt(): alloc error for out_redir[i]");
+								return report_error("bc_shell.c: main(): alloc error for out_redir[i]");
 						}
 						for(k = j; k < num_args[i] - 1; k++)
 							commands[i][k] = commands[i][k+2];
@@ -164,37 +171,11 @@ int shell_prompt()
 						{
 							ir_flags[i] = 1;
 							if((in_redir[i] = str_copy(commands[i][j+1])) == NULL)
-								return allocation_error("bc_shell.c: shell_prompt(): alloc error for in_redir[i]");
+								return report_error("bc_shell.c: main(): alloc error for in_redir[i]");
 						}
 						for(k = j; k < num_args[i] - 1; k++)
 							commands[i][k] = commands[i][k+2];
 						num_args[i] = num_args[i] - 2;
-					}
-				}
-			}
-			
-			if(DEBUG)
-			{
-				for(i = 0; i < num_commands; i++)
-				{
-					printf("ce_flags[%d]: %d\n", i, ce_flags[i]);
-					printf("or_flags[%d]: %d\n", i, or_flags[i]);
-					printf("aor_flags[%d]: %d\n", i, aor_flags[i]);
-					if(or_flags[i] || aor_flags[i])
-						printf("out_redir[%d]: %s\n", i, out_redir[i]);
-					printf("ir_flags[%d]: %d\n", i, ir_flags[i]);
-					if(ir_flags[i])
-						printf("in_redir[%d]: %s\n", i, in_redir[i]);
-				}
-
-				printf("input_string: %s\n", input_string);
-				printf("num_commands: %d\n", num_commands);
-				for(i = 0; i < num_commands; i++)
-				{
-					printf("num_args[%d]: %d\n", i, num_args[i]);
-					for(j = 0; j < num_args[i]; j++)
-					{
-						printf("commands[%d][%d]: %s\n", i, j, commands[i][j]);
 					}
 				}
 			}
@@ -228,6 +209,13 @@ int shell_prompt()
 							{
 								/* Open input redirection and use to replace stdin */
 								ir_fd = open(in_redir[i], O_RDONLY);
+								if(ir_fd == -1)
+								{
+									char* error = append("bc_shell.c: main(): error opening ", in_redir[i]);
+									int ecode = report_error(error);
+									free(error);
+									return ecode;
+								}
 								if(dup2(ir_fd, fileno(stdin)) == -1)
 									printf("dup2 error replacing stdin with ir_fd\n");
 							}
@@ -271,7 +259,7 @@ int shell_prompt()
 						close(pc_fd[i][1]);
 
 						if(!ce_flags[i])
-							wait(child_i_pid);
+							waitpid(child_i_pid, NULL, 0);
 					}
 				}
 				/* Child handler can exit after creating all children */
@@ -285,8 +273,9 @@ int shell_prompt()
 					close(pc_fd[i][0]);
 					close(pc_fd[i][1]);
 				}
+
 				if(!ce_flags[num_commands-1])
-					wait(child_h_pid);
+					waitpid(child_h_pid, NULL, 0);
 			}
 			
 			/* Free all dynamically allocated memory */
@@ -334,9 +323,9 @@ int parse_env_var(char ***paths)
 	while(environ[i] != NULL && !prefixcmp_igncase(environ[i], "path="))
 		i++;
 	if((path = replace(environ[i], "PATH=", "")) == NULL)
-		return allocation_error("bc_shell.c: parse_env_var(): alloc error for path");
+		return report_error("bc_shell.c: parse_env_var(): alloc error for path");
 	if((*paths = chop(path, ':')) == NULL)
-		return allocation_error("bc_shell.c: parse_env_var(): alloc error for paths");
+		return report_error("bc_shell.c: parse_env_var(): alloc error for paths");
 
 	free(path);
 
@@ -348,7 +337,7 @@ int parse_env_var(char ***paths)
    caller is responsible for freeing the dynamically allocated memory for
    input_string 
 
-   Input:  Address of a pointer to char - Initally undefined, after the
+   Input:  Address of a pointer to char - Initially undefined, after the
            function it will contain a c string of the input.
 
    Output: Integer - Returns 1 if the input was successfully read and stored,
@@ -409,7 +398,7 @@ int read_and_space_input(char **input_string)
 
 	/* Copy buffer into input string */
 	if((*input_string = str_copy(buffer)) == NULL)
-		return allocation_error("bc_shell.c: read_and_space_input(): alloc error for input_string");
+		return report_error("bc_shell.c: read_and_space_input(): alloc error for input_string");
 
 	if(c == -1 || prefixcmp_igncase("exit", buffer))
 		return 0;
@@ -425,14 +414,14 @@ int read_and_space_input(char **input_string)
    Input:  C string - A string containing a multiple commands separated by "|"
            with arguments separated by whitespace.
 
-           Address of an integer - Intially undefined, after the function
+           Address of an integer - Initially undefined, after the function
            it will contain the number of commands in the input string.
 
-           Address of a pointer to integer - Initally undefined, after the
+           Address of a pointer to integer - Initially undefined, after the
            function it will contain an array of ints, with each representing
            the number of arguments in each respective command.
 
-           Address of a triple pointer to char - Initally undefined, after the function
+           Address of a triple pointer to char - Initially undefined, after the function
            it will contain an array of commands with each element being an array of 
            c strings with each element being a separate argument from the given 
            command.
@@ -444,27 +433,24 @@ int parse_input(char *input_string, int *num_commands, int **num_args, char ****
 	char **command_strings;
 
 	if((command_strings = chop(input_string, '|')) == NULL)
-		return allocation_error("bc_shell.c: parse_input(): alloc error for commands_strings");
+		return report_error("bc_shell.c: parse_input(): alloc error for commands_strings");
 
 	for(i = 0; command_strings[i] != NULL; i++);
 	*num_commands = i;
 
 	if((*num_args = calloc(*num_commands, sizeof(int))) == NULL)
-		return allocation_error("bc_shell.c: parse_input(): alloc error for num_args");
+		return report_error("bc_shell.c: parse_input(): alloc error for num_args");
 
 	if((*commands = calloc(*num_commands, sizeof(char**))) == NULL)
-		return allocation_error("bc_shell.c: parse_input(): alloc error for commands");
+		return report_error("bc_shell.c: parse_input(): alloc error for commands");
 
 	for(i = 0; i < *num_commands; i++)
 	{
 		strip(command_strings[i]);
 		parse_command(command_strings[i], &((*num_args)[i]), &((*commands)[i]));
-	}
-
-	for(i = 0; i < *num_commands; i++)
-	{
 		free(command_strings[i]);
 	}
+
 	free(command_strings);
 
 	return EXIT_SUCCESS;
@@ -477,10 +463,10 @@ int parse_input(char *input_string, int *num_commands, int **num_args, char ****
    Input:  C string - A string containing a single command with arguments
            separated by whitespace.
 
-           Address of an integer - Intially undefined, after the function
+           Address of an integer - Initially undefined, after the function
            it will contain the number of arguments in the command string.
 
-           Address of a double pointer to char - Initally undefined,
+           Address of a double pointer to char - Initially undefined,
            after the function it will contain an array of c strings
            with each element being a separate argument from the given 
            command string.
@@ -490,7 +476,7 @@ int parse_command(char *command_string, int *num_args, char ***args)
 {
 	int i = 0;
 	if((*args = chop(command_string, ' ')) == NULL)
-		return allocation_error("bc_shell.c: parse_command(): alloc error for args");
+		return report_error("bc_shell.c: parse_command(): alloc error for args");
 	for(i = 0; (*args)[i] != NULL; i++);
 	*num_args = i;
 
@@ -543,9 +529,9 @@ int check_existence(char *argv0, char **paths)
 		for(i = 0; paths[i] != NULL; i++)
 		{
 			if((temp = append("/", argv0)) == NULL)
-				return allocation_error("bc_shell.c: check_existence(): alloc error for temp");
+				return report_error("bc_shell.c: check_existence(): alloc error for temp");
 			if((path = append(paths[i], temp)) == NULL)
-				return allocation_error("bc_shell.c: check_existence(): alloc error for path");
+				return report_error("bc_shell.c: check_existence(): alloc error for path");
 			free(temp);
 			if(access(path, F_OK) != -1)
 			{
@@ -558,20 +544,15 @@ int check_existence(char *argv0, char **paths)
 
 	if(result)
 	{
-		if(path == NULL)
+		if(path != NULL)
 		{
-			if(DEBUG)
-				printf("Found command: %s\n", argv0);
-		}
-		else
-		{
-			if(DEBUG)
-				printf("Found command: %s located at %s\n", argv0, path);
 			free(path);
 		}
 	}
 	else
+	{
 		printf("-bc_shell: %s: command not found\n", argv0);
+	}
 
 	return result;
 }
@@ -596,13 +577,13 @@ int check_existence(char *argv0, char **paths)
 int allocate_flags_memory(int **ce_flags, int **or_flags, int **aor_flags, int **ir_flags, int num_commands)
 {
 	if((*ce_flags = calloc(num_commands, sizeof(int))) == NULL)
-		return allocation_error("bc_shell.c: allocate_flags_memory(): alloc error for ce_flags");
+		return report_error("bc_shell.c: allocate_flags_memory(): alloc error for ce_flags");
 	if((*or_flags = calloc(num_commands, sizeof(int))) == NULL)
-		return allocation_error("bc_shell.c: allocate_flags_memory(): alloc error for or_flags");
+		return report_error("bc_shell.c: allocate_flags_memory(): alloc error for or_flags");
 	if((*aor_flags = calloc(num_commands, sizeof(int))) == NULL)
-		return allocation_error("bc_shell.c: allocate_flags_memory(): alloc error for aor_flags");
+		return report_error("bc_shell.c: allocate_flags_memory(): alloc error for aor_flags");
 	if((*ir_flags = calloc(num_commands, sizeof(int))) == NULL)
-		return allocation_error("bc_shell.c: allocate_flags_memory(): alloc error for ir_flags");
+		return report_error("bc_shell.c: allocate_flags_memory(): alloc error for ir_flags");
 
 	return EXIT_SUCCESS;
 }
@@ -624,9 +605,9 @@ int allocate_flags_memory(int **ce_flags, int **or_flags, int **aor_flags, int *
 int allocate_redirection_memory(char ***out_redir, char ***in_redir, int num_commands)
 {
 	if((*out_redir = calloc(num_commands, sizeof(char*))) == NULL)
-		return allocation_error("bc_shell.c: allocate_redirection_memory(): alloc error for out_redir");
+		return report_error("bc_shell.c: allocate_redirection_memory(): alloc error for out_redir");
 	if((*in_redir = calloc(num_commands, sizeof(char*))) == NULL)
-		return allocation_error("bc_shell.c: allocate_redirection_memory(): alloc error for in_redir");
+		return report_error("bc_shell.c: allocate_redirection_memory(): alloc error for in_redir");
 
 	return EXIT_SUCCESS;
 }
@@ -646,12 +627,12 @@ int allocate_pipe_memory(int ***pc_fd, int num_commands)
 {
 	int i;
 	if((*pc_fd = calloc(num_commands, sizeof(int*))) == NULL)
-		return allocation_error("bc_shell.c: allocate_pipe_memory(): alloc error for pc_fd");
+		return report_error("bc_shell.c: allocate_pipe_memory(): alloc error for pc_fd");
 
 	for(i = 0; i < num_commands; i++)
 	{
 		if(((*pc_fd)[i] = calloc(2, sizeof(int))) == NULL)
-			return allocation_error("bc_shell.c: allocate_pipe_memory(): alloc error for pc_fd[i]");
+			return report_error("bc_shell.c: allocate_pipe_memory(): alloc error for pc_fd[i]");
 	}
 
 	return EXIT_SUCCESS;
@@ -670,31 +651,15 @@ int abs_rel_check(char *s)
 	       prefixcmp_igncase(s, "../");
 }
 
-/* Reports an allocation error.
+/* Reports an error.
 
-   Input:  C string - name of the allocation attempted.
+   Input:  C string - message to be displayed.
 
-   Output: Integer - error code for allocation error. */
-int allocation_error(char *name)
+   Output: Integer - error code for error. */
+int report_error(char *msg)
 {
-	perror(name);
-	fprintf(stderr, "Press enter to exit.\n");
-	getchar();
+	perror(msg);
 
-	return ALLOC_ERROR;
-}
-
-/* Reports a path parsing error.
-
-   Input:  None.
-
-   Output: Integer - error code for allocation error. */
-int parse_env_var_error()
-{
-	fprintf(stderr, "Error parsing environment variables\n");
-	fprintf(stderr, "Press enter to exit.\n");
-	getchar();
-
-	return PARSE_ENV_VAR_ERROR;
+	return ERROR;
 }
 

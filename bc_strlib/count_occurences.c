@@ -5,7 +5,13 @@
 
 #include "bc_strlib.h"
 
-/* Returns the numbers of occurrences of string pat in string s */
+/* Returns the numbers of occurrences of string pat in string s 
+
+   Input:  C string - The string to be search for occurrences
+           C string - The pattern to search for
+
+   Output: Integer - The number of occurence of string pat in
+           string s */
 int count_occurences(char *s, char *pat)
 {
 	int i;

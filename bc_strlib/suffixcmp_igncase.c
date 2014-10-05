@@ -5,7 +5,14 @@
 
 #include "bc_strlib.h"
 
-/* Returns 1 if suff is a suffix of s, ignoring case. Otherwise 0 */
+/* Returns 1 if suff is a suffix of s, ignoring case. Otherwise 0 
+   If either s or suff is blank, 0 is returned 
+
+   Input:  C String - The string to be tested for a suffix
+           C string - The string containing the suffix
+
+   Output: Integer - Returns 1 if string suff is a suffix of s,
+           otherwise returns 0. */
 int suffixcmp_igncase(char *s, char *suff)
 {
 	int sl = strlen(s);
