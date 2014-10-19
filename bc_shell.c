@@ -37,6 +37,7 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include "bc_strlib/bc_strlib.h"
